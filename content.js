@@ -394,38 +394,68 @@
       }
     }
 
-    // 2. Se a mídia ainda não foi carregada no DOM, dispara o Play do WhatsApp
-    const play = message.querySelector(
-      '[data-testid="audio-play"], [data-icon="audio-play"], [data-icon="audio-play-filled"], [aria-label*="Reproduzir"], [aria-label*="Play"]'
-    );
+    // 2. Se a mídia ainda não foi carregada no DOM, dispara o Play de forma silenciosa
+    try {
+      window.dispatchEvent(new CustomEvent('wgt-silent-capture-start'));
 
-    if (play) {
-      play.click();
-    }
-
-    // 3. Aguarda o WhatsApp inicializar e carregar a mídia
-    for (let i = 0; i < 24; i++) {
-      await sleep(250);
-
-      media = findMedia(message);
-      url = media?.currentSrc || media?.src || null;
-
-      if (url) {
-        try { media.pause(); } catch {}
+      if (media) {
         try {
-          const dataUrl = await requestAudioFromPage(url);
-          if (dataUrl) return dataUrl;
+          media.muted = true;
+          media.volume = 0;
+        } catch {}
+      }
+
+      const play = message.querySelector(
+        '[data-testid="audio-play"], [data-icon="audio-play"], [data-icon="audio-play-filled"], [aria-label*="Reproduzir"], [aria-label*="Play"]'
+      );
+
+      if (play) {
+        play.click();
+      }
+
+      // 3. Aguarda o WhatsApp inicializar e carregar a mídia
+      for (let i = 0; i < 24; i++) {
+        await sleep(250);
+
+        media = findMedia(message);
+        url = media?.currentSrc || media?.src || null;
+
+        if (url) {
+          try {
+            media.muted = true;
+            media.volume = 0;
+            media.pause();
+            media.currentTime = 0;
+          } catch {}
+          try {
+            const dataUrl = await requestAudioFromPage(url);
+            if (dataUrl) return dataUrl;
+          } catch {}
+        }
+      }
+
+      // 4. Última tentativa: solicita o áudio mais recente capturado pelo interceptor
+      try {
+        const fallbackDataUrl = await requestAudioFromPage(null);
+        if (fallbackDataUrl) return fallbackDataUrl;
+      } catch {}
+
+      throw new Error('Não consegui obter o arquivo de áudio. Reproduza a mensagem e tente novamente.');
+    } finally {
+      window.dispatchEvent(new CustomEvent('wgt-silent-capture-stop'));
+      if (media) {
+        try {
+          media.pause();
+          media.currentTime = 0;
+          setTimeout(() => {
+            if (media) {
+              media.muted = false;
+              media.volume = 1;
+            }
+          }, 300);
         } catch {}
       }
     }
-
-    // 4. Última tentativa: solicita o áudio mais recente capturado pelo interceptor
-    try {
-      const fallbackDataUrl = await requestAudioFromPage(null);
-      if (fallbackDataUrl) return fallbackDataUrl;
-    } catch {}
-
-    throw new Error('Não consegui obter o arquivo de áudio. Reproduza a mensagem e tente novamente.');
   }
 
   async function fetchAsDataUrl(url) {

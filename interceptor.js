@@ -3,6 +3,22 @@
   window.__wgtBlobStore = window.__wgtBlobStore || new Map();
   const blobStore = window.__wgtBlobStore;
 
+  let isSilentCaptureActive = false;
+
+  window.addEventListener('wgt-silent-capture-start', () => {
+    isSilentCaptureActive = true;
+    document.querySelectorAll('audio, video').forEach(el => {
+      try {
+        el.muted = true;
+        el.volume = 0;
+      } catch {}
+    });
+  });
+
+  window.addEventListener('wgt-silent-capture-stop', () => {
+    isSilentCaptureActive = false;
+  });
+
   const isAudioOrVideo = (type) => {
     if (!type || typeof type !== 'string') return true;
     return type.startsWith('audio/') || type.startsWith('video/') || type.includes('ogg') || type.includes('opus') || type.includes('octet-stream');
@@ -74,6 +90,41 @@
 
   if (window.__wgtInterceptorInstalled) return;
   window.__wgtInterceptorInstalled = true;
+
+  // Intercepta reprodução de áudio para silenciar completamente durante a transcrição
+  const originalPlay = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function() {
+    if (isSilentCaptureActive) {
+      try {
+        this.muted = true;
+        this.volume = 0;
+      } catch {}
+      const playPromise = originalPlay.apply(this, arguments);
+      setTimeout(() => {
+        if (isSilentCaptureActive) {
+          try {
+            this.pause();
+            this.currentTime = 0;
+          } catch {}
+        }
+      }, 60);
+      return playPromise;
+    }
+    return originalPlay.apply(this, arguments);
+  };
+
+  // Garante que novos elementos de áudio inseridos durante a captura silenciosa comecem mutados
+  const mediaObserver = new MutationObserver(() => {
+    if (isSilentCaptureActive) {
+      document.querySelectorAll('audio, video').forEach(el => {
+        try {
+          el.muted = true;
+          el.volume = 0;
+        } catch {}
+      });
+    }
+  });
+  mediaObserver.observe(document.documentElement, { childList: true, subtree: true });
 
   const originalFetch = window.fetch;
   window.fetch = function(resource, init) {
