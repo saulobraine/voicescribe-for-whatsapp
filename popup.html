@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WhatsApp Gemini Transcriber</title>
+  <style>
+    body{width:360px;margin:0;padding:16px;background:#f0f2f5;color:#111b21;font:13px system-ui,sans-serif;box-sizing:border-box}
+    .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px #0001}
+    h1{font-size:17px;margin:0 0 4px}.sub{color:#667781;margin:0 0 16px}
+    label{display:block;font-weight:600;margin:12px 0 6px}input,select{width:100%;box-sizing:border-box;padding:9px;border:1px solid #ccd2d5;border-radius:7px;background:#fff}
+    button{border:0;border-radius:7px;padding:9px 12px;background:#00a884;color:white;font-weight:600;cursor:pointer;margin-top:8px}.secondary{background:#54656f}
+    .row{display:flex;gap:8px}.row button{flex:1}.status{margin-top:10px;min-height:18px;color:#667781}.ok{color:#087f5b}.err{color:#c62828}
+    .model-row{display:flex;gap:8px}.model-row select{flex:1}.model-row button{margin-top:0;white-space:nowrap}
+    small{display:block;margin-top:12px;color:#667781;line-height:1.4}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🎙 WhatsApp Gemini Transcriber</h1>
+    <p class="sub">Sua chave e sua seleção ficam somente no armazenamento local da extensão.</p>
+
+    <label for="key">Chave da API Gemini</label>
+    <input id="key" type="password" autocomplete="off" placeholder="AIza...">
+
+    <label for="model">Modelo com entrada de áudio</label>
+    <div class="model-row">
+      <select id="model" disabled>
+        <option>Informe a chave e clique em Atualizar</option>
+      </select>
+      <button id="refresh" class="secondary" type="button">Atualizar</button>
+    </div>
+
+    <div class="row">
+      <button id="save">Salvar</button>
+      <button id="test" class="secondary" type="button">Testar</button>
+    </div>
+    <div id="status" class="status"></div>
+
+    <small>A lista é obtida da API Gemini e filtrada para modelos compatíveis com entrada de áudio. O Gemini 3.5 Transcribe usa a API de transcrição dedicada.</small>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

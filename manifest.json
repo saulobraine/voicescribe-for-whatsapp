@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "WhatsApp Gemini Transcriber",
+  "version": "1.0.0",
+  "description": "Transcreve áudios do WhatsApp Web usando sua própria chave da API Gemini.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://web.whatsapp.com/*",
+    "https://*.whatsapp.com/*",
+    "https://*.whatsapp.net/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  "action": {
+    "default_title": "WhatsApp Gemini Transcriber",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "interceptor.js"
+      ],
+      "matches": [
+        "https://web.whatsapp.com/*"
+      ]
+    }
+  ]
+}
