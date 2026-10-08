@@ -4,10 +4,10 @@
   "description": "Transcreve áudios do WhatsApp Web usando a API Gemini do Google.",
   "type": "module",
   "scripts": {
-    "build": "node build.js",
-    "watch": "node build.js --watch",
+    "build": "node build.ts",
+    "watch": "node build.ts --watch",
     "typecheck": "tsc --noEmit",
-    "test": "node test-runner.js"
+    "test": "node test-runner.ts"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.312",

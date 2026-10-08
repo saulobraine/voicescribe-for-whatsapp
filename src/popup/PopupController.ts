@@ -44,11 +44,16 @@ export class PopupController {
   }
 
   private async loadModels(selectedModel: string, showStatus: boolean): Promise<void> {
+    const refreshBtn = document.getElementById('refresh') as HTMLButtonElement | null;
     if (showStatus) {
       this.setStatus('Buscando modelos com áudio...', false);
     }
     if (this.modelSelect) {
       this.modelSelect.disabled = true;
+    }
+    if (refreshBtn) {
+      refreshBtn.disabled = true;
+      refreshBtn.classList.add('refreshing');
     }
 
     try {
@@ -65,6 +70,10 @@ export class PopupController {
     } finally {
       if (this.modelSelect) {
         this.modelSelect.disabled = false;
+      }
+      if (refreshBtn) {
+        refreshBtn.disabled = false;
+        refreshBtn.classList.remove('refreshing');
       }
     }
   }

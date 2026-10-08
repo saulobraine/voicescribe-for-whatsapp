@@ -28,7 +28,7 @@
     body {
       width: 360px;
       margin: 0;
-      padding: 16px;
+      padding: 14px;
       background: radial-gradient(circle at top left, #0e1e2d 0%, #090d16 100%);
       color: var(--text-main);
       font: 13px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -41,8 +41,10 @@
       -webkit-backdrop-filter: blur(16px);
       border: 1px solid var(--card-border);
       border-radius: 16px;
-      padding: 18px;
+      padding: 16px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      width: 100%;
+      overflow: hidden;
     }
 
     .header {
@@ -62,6 +64,7 @@
 
     .header-text {
       flex: 1;
+      min-width: 0;
     }
 
     h1 {
@@ -93,6 +96,7 @@
       text-decoration: none;
       transition: all 0.2s ease;
       margin-bottom: 14px;
+      width: 100%;
     }
 
     .btn-admin:hover {
@@ -122,6 +126,7 @@
       padding: 2px 7px;
       border-radius: 10px;
       border: 1px solid rgba(16, 185, 129, 0.35);
+      white-space: nowrap;
     }
 
     label {
@@ -136,14 +141,19 @@
 
     .model-row {
       display: flex;
+      align-items: center;
       gap: 8px;
       margin-bottom: 12px;
+      width: 100%;
     }
 
-    select {
-      flex: 1;
+    .model-row select {
+      flex: 1 1 0;
+      min-width: 0;
+      width: 0;
+      height: 38px;
       box-sizing: border-box;
-      padding: 9px 11px;
+      padding: 0 10px;
       background: var(--input-bg);
       border: 1px solid var(--input-border);
       border-radius: 8px;
@@ -151,20 +161,24 @@
       font-size: 12.5px;
       outline: none;
       transition: all 0.15s ease;
+      cursor: pointer;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      overflow: hidden;
     }
 
-    select:focus {
+    .model-row select:focus {
       border-color: #06b6d4;
       box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.25);
     }
 
-    select optgroup {
+    .model-row select optgroup {
       background: #0f172a;
       color: #94a3b8;
       font-weight: 600;
     }
 
-    select option {
+    .model-row select option {
       background: #0f172a;
       color: #f8fafc;
     }
@@ -181,6 +195,41 @@
       align-items: center;
       justify-content: center;
       gap: 6px;
+      box-sizing: border-box;
+    }
+
+    #refresh {
+      flex: 0 0 38px;
+      width: 38px;
+      height: 38px;
+      padding: 0;
+      margin: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      line-height: 1;
+      border-radius: 8px;
+    }
+
+    #refresh:hover:not(:disabled) {
+      background: rgba(51, 65, 85, 0.9);
+      color: #fff;
+      border-color: rgba(6, 182, 212, 0.4);
+    }
+
+    #refresh:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    @keyframes spin-refresh {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .refreshing {
+      animation: spin-refresh 0.75s linear infinite !important;
     }
 
     #save {
@@ -211,10 +260,12 @@
       display: flex;
       gap: 8px;
       margin-top: 6px;
+      width: 100%;
     }
 
     .row button {
       flex: 1;
+      height: 38px;
     }
 
     .status {
@@ -223,8 +274,9 @@
       font-size: 11.5px;
       line-height: 1.4;
       border-radius: 6px;
-      padding: 4px 8px;
+      padding: 6px 10px;
       display: none;
+      word-break: break-word;
     }
 
     .status.ok {
@@ -258,7 +310,8 @@
       border: 1px solid rgba(239, 68, 68, 0.25) !important;
       color: #f87171 !important;
       font-size: 11.5px !important;
-      padding: 7px 12px;
+      padding: 8px 12px;
+      border-radius: 8px;
     }
 
     #clear-cache:hover {

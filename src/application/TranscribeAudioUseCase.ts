@@ -4,6 +4,7 @@ import { ApiKeyPool } from '../domain/ApiKeyPool.js';
 import { ApiKey } from '../domain/ApiKey.js';
 import { ModelIdentifier } from '../domain/ModelIdentifier.js';
 import { AudioDataUrl } from '../domain/AudioDataUrl.js';
+import { GeminiRateLimitError } from '../domain/GeminiRateLimitError.js';
 
 export class TranscribeAudioUseCase {
   private readonly storage: ChromeStorageGateway;
@@ -49,6 +50,14 @@ export class TranscribeAudioUseCase {
         await this.storage.saveStoredKeys([...pool.getAll()]);
         return result.toDisplayText();
       } catch (error: unknown) {
+        if (error instanceof GeminiRateLimitError) {
+          const resetTimestamp = Date.now() + error.retryDelayMs;
+          pool = pool.markRateLimited(activeRecord.id, resetTimestamp);
+          await this.storage.saveStoredKeys([...pool.getAll()]);
+          lastError = error;
+          continue;
+        }
+
         const message = error instanceof Error ? error.message : String(error);
         lastError = error instanceof Error ? error : new Error(message);
 

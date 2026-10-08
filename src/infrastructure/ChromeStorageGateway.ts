@@ -77,11 +77,15 @@ export class ChromeStorageGateway {
     if (!this.isStorageAvailable() || messageId.length === 0) {
       return null;
     }
-    const key = `${ChromeStorageGateway.MSG_CACHE_PREFIX}${messageId}`;
+    const sanitized = String(messageId).replace(/[^a-zA-Z0-9_@-]/g, '_');
+    const key = `${ChromeStorageGateway.MSG_CACHE_PREFIX}${sanitized}`;
     const result = await chrome.storage.local.get([key]);
     const record = result[key];
     if (typeof record === 'string' && record.trim().length > 0) {
       return record;
+    }
+    if (record && typeof record.transcript === 'string') {
+      return record.transcript;
     }
     return null;
   }
@@ -90,8 +94,15 @@ export class ChromeStorageGateway {
     if (!this.isStorageAvailable() || messageId.length === 0) {
       return;
     }
-    const key = `${ChromeStorageGateway.MSG_CACHE_PREFIX}${messageId}`;
-    await chrome.storage.local.set({ [key]: text });
+    const sanitized = String(messageId).replace(/[^a-zA-Z0-9_@-]/g, '_');
+    const key = `${ChromeStorageGateway.MSG_CACHE_PREFIX}${sanitized}`;
+    await chrome.storage.local.set({
+      [key]: {
+        transcript: text,
+        timestamp: Date.now(),
+        id: messageId,
+      },
+    });
   }
 
   public async clearAllCache(): Promise<number> {
