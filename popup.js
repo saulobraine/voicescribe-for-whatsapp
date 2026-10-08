@@ -1,27 +1,43 @@
 const DEFAULT_MODEL = 'gemini-3.8-flash';
-const key = document.getElementById('key');
-const model = document.getElementById('model');
-const status = document.getElementById('status');
+const modelSelect = document.getElementById('model');
+const statusEl = document.getElementById('status');
 
-chrome.storage.local.get(['geminiKey', 'selectedModel'], async values => {
-  key.value = values.geminiKey || '';
-  await loadModels(values.geminiKey || '', values.selectedModel || DEFAULT_MODEL, false);
-});
+(async () => {
+  // Migração: converte chave única para pool se necessário
+  const data = await chrome.storage.local.get(['geminiKey', 'geminiKeys']);
+  if (!data.geminiKeys?.length && data.geminiKey) {
+    const pool = [{
+      id: 'wgt_' + Date.now().toString(36),
+      key: data.geminiKey,
+      active: true,
+      status: 'available',
+      rateLimitReset: null,
+      usageCount: 0,
+      lastUsed: 0
+    }];
+    await chrome.storage.local.set({ geminiKeys: pool });
+    console.log('[WGT] Migrado chave única para pool');
+  }
+
+  const { selectedModel = DEFAULT_MODEL } = await chrome.storage.local.get('selectedModel');
+  await loadModels(selectedModel, false);
+})();
 
 document.getElementById('refresh').addEventListener('click', async () => {
-  await loadModels(key.value.trim(), model.value || DEFAULT_MODEL, true);
+  await loadModels(modelSelect.value || DEFAULT_MODEL, true);
 });
 
 document.getElementById('save').addEventListener('click', async () => {
-  const selectedModel = model.value.trim() || DEFAULT_MODEL;
-  await chrome.storage.local.set({ geminiKey: key.value.trim(), selectedModel });
+  const selectedModel = modelSelect.value.trim() || DEFAULT_MODEL;
+  await chrome.storage.local.set({ selectedModel });
   setStatus('Configuração salva.', false);
 });
 
 document.getElementById('test').addEventListener('click', async () => {
-  const apiKey = key.value.trim();
-  const selectedModel = model.value.trim() || DEFAULT_MODEL;
-  if (!apiKey) return setStatus('Informe a chave primeiro.', true);
+  const selectedModel = modelSelect.value.trim() || DEFAULT_MODEL;
+  const { geminiKeys } = await chrome.storage.local.get('geminiKeys');
+  const apiKey = geminiKeys?.find(k => k.active && (!k.rateLimitReset || k.rateLimitReset < Date.now()))?.key;
+  if (!apiKey) return setStatus('Nenhuma chave ativa. Adicione em Gerenciar API Keys.', true);
 
   setStatus('Testando modelo...', false);
   try {
@@ -47,32 +63,29 @@ document.getElementById('test').addEventListener('click', async () => {
   }
 });
 
-async function loadModels(apiKey, selectedModel, showStatus) {
-  if (!apiKey) {
-    model.disabled = true;
-    model.innerHTML = '<option>Informe a chave e clique em Atualizar</option>';
-    return;
-  }
-
+async function loadModels(selectedModel, showStatus) {
   if (showStatus) setStatus('Buscando modelos com áudio...', false);
-  model.disabled = true;
+  modelSelect.disabled = true;
   try {
     const response = await chrome.runtime.sendMessage({ action: 'listAudioModels' });
     if (!response?.success) throw new Error(response?.error || 'Não foi possível listar os modelos.');
     populateModels(response.models || [], selectedModel);
     if (showStatus) setStatus(`${response.models.length} modelo(s) de áudio encontrado(s).`, false);
   } catch (error) {
-    model.innerHTML = '<option>Falha ao carregar modelos</option>';
+    const isNoKeys = error.message.includes('painel') || error.message.includes('chaves');
+    modelSelect.innerHTML = isNoKeys
+      ? '<option>Configure suas chaves no painel</option>'
+      : '<option>Falha ao carregar modelos</option>';
     setStatus(error.message, true);
   } finally {
-    model.disabled = false;
+    modelSelect.disabled = false;
   }
 }
 
 function populateModels(models, selectedModel) {
-  model.innerHTML = '';
+  modelSelect.innerHTML = '';
   if (!models.length) {
-    model.innerHTML = '<option value="">Nenhum modelo compatível encontrado</option>';
+    modelSelect.innerHTML = '<option value="">Nenhum modelo compatível encontrado</option>';
     return;
   }
 
@@ -83,18 +96,18 @@ function populateModels(models, selectedModel) {
     const group = document.createElement('optgroup');
     group.label = 'Transcrição dedicada';
     dedicated.forEach(item => addOption(group, item));
-    model.appendChild(group);
+    modelSelect.appendChild(group);
   }
 
   if (general.length) {
     const group = document.createElement('optgroup');
     group.label = 'Gemini multimodal';
     general.forEach(item => addOption(group, item));
-    model.appendChild(group);
+    modelSelect.appendChild(group);
   }
 
   const exists = models.some(item => item.id === selectedModel);
-  model.value = exists ? selectedModel : (dedicated[0]?.id || general[0]?.id || DEFAULT_MODEL);
+  modelSelect.value = exists ? selectedModel : (dedicated[0]?.id || general[0]?.id || DEFAULT_MODEL);
 }
 
 function addOption(parent, item) {
@@ -106,6 +119,40 @@ function addOption(parent, item) {
 }
 
 function setStatus(message, error) {
-  status.textContent = message;
-  status.className = `status ${error ? 'err' : 'ok'}`;
+  statusEl.textContent = message;
+  statusEl.className = `status ${error ? 'err' : 'ok'}`;
+}
+
+// Botão de limpar cache
+const clearBtn = document.getElementById('clear-cache');
+if (clearBtn) {
+  clearBtn.addEventListener('click', async () => {
+    if (!confirm('Tem certeza que deseja zerar todo o cache de áudio transcrito?')) return;
+
+    clearBtn.disabled = true;
+    clearBtn.textContent = '⏳ Limpando...';
+
+    try {
+      const all = await chrome.storage.local.get(null);
+
+      // Remove todas as chaves de cache de mensagens e quotas
+      const cacheKeys = Object.keys(all).filter(key =>
+        key.startsWith('wgt_msg_cache_') ||
+        key.startsWith('wgt_cache_') ||
+        key.startsWith('wgt_quota_cooldown')
+      );
+
+      if (cacheKeys.length > 0) {
+        await chrome.storage.local.remove(cacheKeys);
+      }
+
+      setStatus(`Cache zerado: ${cacheKeys.length} entradas removidas.`, false);
+      setTimeout(() => { clearBtn.textContent = 'Zerar Cachê'; }, 1500);
+    } catch (err) {
+      setStatus('Erro ao limpar cache: ' + (err?.message || err), true);
+      setTimeout(() => { clearBtn.textContent = 'Zerar Cachê'; }, 2000);
+    } finally {
+      clearBtn.disabled = false;
+    }
+  });
 }

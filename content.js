@@ -1,6 +1,14 @@
 (() => {
   if (window.top !== window) return;
 
+  function isExtensionValid() {
+    try {
+      return Boolean(typeof chrome !== 'undefined' && chrome?.runtime && chrome.runtime?.id);
+    } catch {
+      return false;
+    }
+  }
+
   const BUTTON = 'wgt-transcribe-button';
   const STYLE = 'wgt-style';
   let lastAudio = null;
@@ -29,6 +37,11 @@
   void scan();
 
   const observer = new MutationObserver(mutations => {
+    if (!isExtensionValid()) {
+      observer.disconnect();
+      return;
+    }
+
     const isInternalMutation = mutations.every(mutation => {
       const nodes = [...mutation.addedNodes, ...mutation.removedNodes];
       if (nodes.length === 0) return true;
@@ -47,6 +60,7 @@
   });
 
   const startObserver = () => {
+    if (!isExtensionValid()) return;
     const main = document.querySelector('#main') || document.body;
     if (main) observer.observe(main, { childList: true, subtree: true });
   };
@@ -142,7 +156,10 @@
   }
 
   function findMessage(el) {
-    return el.closest?.('[data-id], [role="row"], .message-in, .message-out, .msg-container');
+    if (!el?.closest) return null;
+    // Prioriza o wrapper estável com data-id: 1 elemento canônico por mensagem
+    // (evita processar msg-container e wrapper como "mensagens diferentes")
+    return el.closest('[data-id]') || el.closest('[role="row"], .message-in, .message-out, .msg-container');
   }
 
   function findMedia(message) {
@@ -153,6 +170,11 @@
   }
 
   async function scan() {
+    if (!isExtensionValid()) {
+      observer.disconnect();
+      return;
+    }
+
     const candidates = document.querySelectorAll(
       'audio, video, [data-testid*="audio"], [data-testid*="ptt"], [data-testid*="voice"], [data-icon*="audio-play"], [data-icon*="ptt"], span.ptt-status'
     );
@@ -171,6 +193,11 @@
   }
 
   async function checkMessageCache(message, button) {
+    if (!isExtensionValid()) {
+      observer.disconnect();
+      return;
+    }
+
     try {
       const cached = await getCachedTranscript(message);
       if (!cached) return;
@@ -184,12 +211,19 @@
         showCachedBubble(message, cached);
       }
     } catch (e) {
+      if (e?.message?.includes('Extension context invalidated')) {
+        observer.disconnect();
+        return;
+      }
       console.warn('[WGT] Erro ao carregar cache da mensagem:', e);
     }
   }
 
   function showCachedBubble(message, text) {
     if (message.querySelector('.wgt-cached-container')) return;
+
+    // Remove bolha transitória de clique anterior (evita 2 textos na mesma mensagem)
+    message.querySelectorAll('.wgt-bubble').forEach(b => b.remove());
 
     const wrapper = document.createElement('div');
     wrapper.className = 'wgt-cached-container';
@@ -239,6 +273,11 @@
       event.stopPropagation();
       if (button.disabled) return;
 
+      if (!isExtensionValid()) {
+        showBubble(button, 'A extensão foi atualizada. Recarregue a página (F5) para continuar.', true);
+        return;
+      }
+
       // 1. Verifica cache antes de qualquer download/reprodução de áudio
       const cached = await getCachedTranscript(message);
       if (cached) {
@@ -259,62 +298,37 @@
       closeBubble();
 
       try {
-        // Verifica se estamos em período de cooldown de quota
-        const cooldown = await getQuotaCooldown();
-        if (cooldown) {
-          const now = Date.now();
-          if (now < cooldown.until) {
-            const releaseDate = new Date(cooldown.until);
-            const timeStr = releaseDate.toLocaleString('pt-BR', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit'
-            });
-            
-            button.textContent = '🕐 Cooldown';
-            showBubble(button, `Limite de requisições da API Gemini atingido!\n\n📅 Pode usar novamente: ${timeStr}`, false);
-            setTimeout(() => {
-              if (button.isConnected) {
-                button.disabled = false;
-                button.textContent = '🎙 Transcrever';
-              }
-            }, 3000);
-            return;
-          }
-        }
-
         const dataUrl = await obtainAudio(message, target);
-        const result = await sendForTranscription(dataUrl, message);
+        const result = await sendForTranscription(dataUrl);
         button.textContent = '✓ Transcrito';
         await cacheTranscript(message, result); // Salva no cache
         delete message.dataset.wgtClosed;
         showCachedBubble(message, result);
       } catch (error) {
-        // A cota do Gemini sendo atingida é um comportamento normal, tratamos separadamente
-        if (error.message.includes('quota') || error.message.includes('rate limit')) {
-          const retryMatch = error.message.match(/retry in (\d+)h(\d+)m(?:(\d+)\.\d+s)?/);
-          if (retryMatch) {
-            const hours = parseInt(retryMatch[1]);
-            const minutes = parseInt(retryMatch[2]);
-            const seconds = parseInt(retryMatch[3] || 0);
-            const until = Date.now() + (hours * 3600000) + (minutes * 60000) + (seconds * 1000);
-            await setQuotaCooldown(until);
-            
-            button.textContent = '🕐 Cooldown';
-            const date = new Date(until);
-            const retryStr = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
-            showBubble(button, `Limite de requisições da API Gemini atingido!\n\n📅 Pode usar novamente: ${retryStr}`, false);
-            setTimeout(() => {
-              if (button.isConnected) {
-                button.disabled = false;
-                button.textContent = '🎙 Transcrever';
-              }
-            }, 3000);
-            return;
-          }
+        // Cota atingida nas chaves do pool
+        if (error.message.includes('quota') || error.message.includes('rate limit') || error.message.includes('Limite da API')) {
+          button.textContent = '🕐 Cooldown';
+          showBubble(button, `${error.message}\n\nDica: você pode adicionar novas chaves em "Gerenciar API Keys".`, false);
+          setTimeout(() => {
+            if (button.isConnected) {
+              button.disabled = false;
+              button.textContent = '🎙 Transcrever';
+            }
+          }, 3500);
+          return;
+        }
+
+        // Alta demanda da API é transitória — mensagem informativa, não erro
+        if (/high demand|overloaded|try again later/i.test(error.message || '')) {
+          button.textContent = '⏳ Aguarde';
+          showBubble(button, 'A API do Gemini está sob alta demanda.\nTente novamente em instantes.', false);
+          setTimeout(() => {
+            if (button.isConnected) {
+              button.disabled = false;
+              button.textContent = '🎙 Transcrever';
+            }
+          }, 3000);
+          return;
         }
 
         // Outros erros são tratados normalmente
@@ -345,13 +359,13 @@
     return button;
   }
 
-  function requestAudioFromPage(url) {
+  function requestAudioFromPage(url, minTimestamp = null) {
     return new Promise((resolve, reject) => {
       const requestId = 'wgt_' + Math.random().toString(36).slice(2, 9);
       const timer = setTimeout(() => {
         window.removeEventListener('wgt-response-audio', handler);
         reject(new Error('Tempo limite excedido ao capturar o áudio da página.'));
-      }, 7000);
+      }, 8000);
 
       function handler(event) {
         const detail = event.detail || {};
@@ -370,9 +384,54 @@
 
       window.addEventListener('wgt-response-audio', handler);
       window.dispatchEvent(new CustomEvent('wgt-request-audio', {
-        detail: { requestId, url }
+        detail: { requestId, url, minTimestamp }
       }));
     });
+  }
+
+  function findPlayButton(message) {
+    if (!message) return null;
+
+    // 1. Seletores específicos de botão de play do WhatsApp Web
+    const specific = message.querySelector(
+      '[data-testid="audio-play"], [data-testid="ptt-play"], [data-testid="play"], ' +
+      '[data-icon="audio-play"], [data-icon="audio-play-filled"], [data-icon="play"], ' +
+      'button[aria-label*="Reproduzir" i], button[aria-label*="Play" i], ' +
+      '[aria-label*="Reproduzir" i], [aria-label*="Play" i]'
+    );
+    if (specific) return specific;
+
+    // 2. Procura botão dentro do player de áudio que não seja da nossa extensão
+    const playerWrapper = message.querySelector('[data-testid*="audio"], [data-testid*="ptt"], .audio-player');
+    if (playerWrapper) {
+      const btn = playerWrapper.querySelector('button:not(.wgt-transcribe-button):not(.wgt-copy):not(.wgt-close)');
+      if (btn) return btn;
+    }
+
+    // 3. Qualquer botão na mensagem que contenha SVG de play
+    const allButtons = message.querySelectorAll('button:not(.wgt-transcribe-button):not(.wgt-copy):not(.wgt-close)');
+    for (const btn of allButtons) {
+      if (btn.querySelector('[data-icon*="play"], svg')) {
+        return btn;
+      }
+    }
+
+    return null;
+  }
+
+  function findPauseButton(message) {
+    if (!message) return null;
+
+    // Botão de pause do WhatsApp — ícones que indicam estado "tocando"
+    const specific = message.querySelector(
+      '[data-testid="audio-pause"], [data-testid="ptt-pause"], [data-testid="pause"], ' +
+      '[data-icon="audio-pause"], [data-icon="audio-pause-filled"], [data-icon="pause"], ' +
+      'button[aria-label*="Pausar" i], button[aria-label*="Pause" i], ' +
+      '[aria-label*="Pausar" i], [aria-label*="Pause" i]'
+    );
+    if (specific) return specific;
+
+    return null;
   }
 
   async function obtainAudio(message, target) {
@@ -394,6 +453,18 @@
       }
     }
 
+    const captureStartTime = Date.now();
+    let capturedAudioUrl = null;
+
+    // Escuta novo áudio emitido estritamente a partir deste momento
+    const audioListener = (event) => {
+      const detail = event.detail || {};
+      if (detail.url && (!detail.timestamp || detail.timestamp >= captureStartTime)) {
+        capturedAudioUrl = detail.url;
+      }
+    };
+    window.addEventListener('wgt-audio', audioListener);
+
     // 2. Se a mídia ainda não foi carregada no DOM, dispara o Play de forma silenciosa
     try {
       window.dispatchEvent(new CustomEvent('wgt-silent-capture-start'));
@@ -405,21 +476,26 @@
         } catch {}
       }
 
-      const play = message.querySelector(
-        '[data-testid="audio-play"], [data-icon="audio-play"], [data-icon="audio-play-filled"], [aria-label*="Reproduzir"], [aria-label*="Play"]'
-      );
-
+      const play = findPlayButton(message);
       if (play) {
         play.click();
       }
 
-      // 3. Aguarda o WhatsApp inicializar e carregar a mídia
-      for (let i = 0; i < 24; i++) {
-        await sleep(250);
+      // 3. Aguarda o WhatsApp baixar, decodificar e disponibilizar a mídia
+      for (let i = 0; i < 30; i++) {
+        await sleep(200);
 
+        // Checa se o interceptor avisou sobre a criação do novo áudio
+        if (capturedAudioUrl) {
+          try {
+            const dataUrl = await requestAudioFromPage(capturedAudioUrl);
+            if (dataUrl) return dataUrl;
+          } catch {}
+        }
+
+        // Checa se a tag de áudio na mensagem recebeu a nova URL
         media = findMedia(message);
         url = media?.currentSrc || media?.src || null;
-
         if (url) {
           try {
             media.muted = true;
@@ -434,27 +510,40 @@
         }
       }
 
-      // 4. Última tentativa: solicita o áudio mais recente capturado pelo interceptor
+      // 4. Última tentativa: solicita apenas áudio gerado após captureStartTime
       try {
-        const fallbackDataUrl = await requestAudioFromPage(null);
+        const fallbackDataUrl = await requestAudioFromPage(null, captureStartTime);
         if (fallbackDataUrl) return fallbackDataUrl;
       } catch {}
 
       throw new Error('Não consegui obter o arquivo de áudio. Reproduza a mensagem e tente novamente.');
     } finally {
-      window.dispatchEvent(new CustomEvent('wgt-silent-capture-stop'));
-      if (media) {
+      window.removeEventListener('wgt-audio', audioListener);
+
+      // Para o áudio pelo botão do próprio WhatsApp (evita que o player avance para o próximo)
+      const pauseBtn = findPauseButton(message);
+      if (pauseBtn) {
+        try { pauseBtn.click(); } catch {}
+        // Pequena espera para o WhatsApp processar a pausa
+        await sleep(50);
+      }
+
+      // Fallback: pausa diretamente no elemento de mídia se ainda estiver tocando
+      media = findMedia(message);
+      if (media && !media.paused) {
         try {
           media.pause();
           media.currentTime = 0;
-          setTimeout(() => {
-            if (media) {
-              media.muted = false;
-              media.volume = 1;
-            }
-          }, 300);
         } catch {}
       }
+
+      // Sinaliza fim da captura silenciosa (desativa mute em todos os elementos)
+      window.dispatchEvent(new CustomEvent('wgt-silent-capture-stop'));
+
+      // Restaura volume de TODOS os elementos imediatamente (espelho do mute-all do início)
+      document.querySelectorAll('audio, video').forEach(el => {
+        try { el.muted = false; el.volume = 1; } catch {}
+      });
     }
   }
 
@@ -494,55 +583,20 @@
     if (parts.length >= 2 && id.includes('@') && parts[parts.length - 1].length >= 6) {
       return true;
     }
+    // WhatsApp Web moderno: id de mensagem em hex longo (ex: AC671504A3D9209B875BAFDBCC5CD06E)
+    if (/^[0-9A-Za-z]{16,}$/.test(id)) return true;
     return false;
   }
 
   function getMessageId(message) {
     if (!message) return null;
 
-    // 1. Procura por data-id específico de mensagem no próprio elemento ou em filhos
+    // data-id do próprio wrapper canônico da mensagem
     const selfId = message.getAttribute?.('data-id') || message.dataset?.id;
     if (isSpecificMessageId(selfId)) return selfId;
 
-    const childWithId = message.querySelector?.('[data-id*="_"]');
-    const childId = childWithId?.getAttribute?.('data-id') || childWithId?.dataset?.id;
-    if (isSpecificMessageId(childId)) return childId;
-
-    // 2. Procura em ancestrais que contenham data-id de mensagem
-    const ancestor = message.closest?.('[data-id*="_"]');
-    const ancestorId = ancestor?.getAttribute?.('data-id') || ancestor?.dataset?.id;
-    if (isSpecificMessageId(ancestorId)) return ancestorId;
-
-    // 3. Fallback: cria fingerprint único baseado nos metadados do DOM da mensagem
-    return getMessageFingerprint(message);
-  }
-
-  function getMessageFingerprint(message) {
-    // Extrai o identificador ou nome da conversa no cabeçalho
-    const chatHeader = document.querySelector('#main header [title], #main header [data-testid="conversation-info-header-chat-title"]');
-    const chatTitle = chatHeader?.getAttribute?.('title') || chatHeader?.textContent?.trim() || 'chat';
-
-    // Extrai timestamp e remetente de data-pre-plain-text (ex: "[14:35, 05/10/2026] Contato: ")
-    const copyable = message.querySelector?.('[data-pre-plain-text]');
-    const preText = copyable?.getAttribute?.('data-pre-plain-text') || '';
-
-    // Extrai horário visível da mensagem se preText não existir
-    const timeEl = message.querySelector?.('[data-testid="msg-meta"], [data-testid="msg-time"], .copyable-text');
-    const timeText = preText || timeEl?.textContent?.trim() || '';
-
-    // Extrai duração do áudio exibida no player (ex: "0:15", "1:22")
-    const durationMatch = message.textContent?.match(/\b\d{1,2}:\d{2}\b/);
-    const duration = durationMatch ? durationMatch[0] : '';
-
-    // Direção da mensagem (enviada vs recebida)
-    const isOut = message.classList?.contains('message-out') || message.closest?.('.message-out') || message.querySelector?.('.message-out');
-    const direction = isOut ? 'out' : 'in';
-
-    // Se temos informações suficientes para formar uma chave única
-    if (timeText || duration) {
-      return `${chatTitle}_${direction}_${timeText}_${duration}`;
-    }
-
+    // Sem data-id válido: não usa cache (chave errada = transcrição exibida
+    // em outra mensagem; é melhor não cachear do que duplicar)
     return null;
   }
 
@@ -554,28 +608,44 @@
   }
 
   async function getCachedTranscript(message) {
+    if (!isExtensionValid()) return null;
     if (!chrome.storage || !chrome.storage.local) return null;
     const key = getMessageCacheKey(message);
     if (!key) return null;
-    const result = await chrome.storage.local.get([key]);
-    return result[key]?.transcript || null;
+    try {
+      const result = await chrome.storage.local.get([key]);
+      return result[key]?.transcript || null;
+    } catch (e) {
+      if (e?.message?.includes('Extension context invalidated')) {
+        observer.disconnect();
+      }
+      return null;
+    }
   }
 
   async function cacheTranscript(message, transcript) {
+    if (!isExtensionValid()) return;
     if (!chrome.storage || !chrome.storage.local) return;
     const key = getMessageCacheKey(message);
     if (!key) return;
-    await chrome.storage.local.set({
-      [key]: {
-        transcript,
-        timestamp: Date.now(),
-        id: getMessageId(message)
+    try {
+      await chrome.storage.local.set({
+        [key]: {
+          transcript,
+          timestamp: Date.now(),
+          id: getMessageId(message)
+        }
+      });
+    } catch (e) {
+      if (e?.message?.includes('Extension context invalidated')) {
+        observer.disconnect();
       }
-    });
+    }
   }
 
   // Remove chaves de cache legadas geradas com IDs genéricos do chat inteiro
   async function cleanupLegacyCache() {
+    if (!isExtensionValid()) return;
     try {
       if (!chrome.storage || !chrome.storage.local) return;
       const all = await chrome.storage.local.get(null);
@@ -591,32 +661,33 @@
       if (keysToRemove.length > 0) {
         await chrome.storage.local.remove(keysToRemove);
       }
-    } catch {}
+    } catch (e) {
+      if (e?.message?.includes('Extension context invalidated')) {
+        observer.disconnect();
+      }
+    }
   }
 
-  // Gerenciamento de cooldown de quota (por API key)
-  async function getQuotaCooldown() {
-    if (!chrome.storage || !chrome.storage.local) return null;
-    const { geminiKey } = await chrome.storage.local.get(['geminiKey']);
-    const key = `wgt_quota_cooldown_${geminiKey || 'default'}`;
-    const result = await chrome.storage.local.get([key]);
-    return result[key] || null;
-  }
-
-  async function setQuotaCooldown(until) {
-    if (!chrome.storage || !chrome.storage.local) return;
-    const { geminiKey } = await chrome.storage.local.get(['geminiKey']);
-    const key = `wgt_quota_cooldown_${geminiKey || 'default'}`;
-    await chrome.storage.local.set({ [key]: { until } });
-  }
 
   function sendForTranscription(audioData) {
     return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({ action: 'transcribeAudio', audioData }, response => {
-        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-        if (!response?.success) return reject(new Error(response?.error || 'Erro desconhecido.'));
-        resolve(response.data);
-      });
+      if (!isExtensionValid()) {
+        observer.disconnect();
+        return reject(new Error('A extensão foi atualizada. Por favor, recarregue a página (F5).'));
+      }
+      try {
+        chrome.runtime.sendMessage({ action: 'transcribeAudio', audioData }, response => {
+          if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+          if (!response?.success) return reject(new Error(response?.error || 'Erro desconhecido.'));
+          resolve(response.data);
+        });
+      } catch (err) {
+        if (err?.message?.includes('Extension context invalidated')) {
+          observer.disconnect();
+          return reject(new Error('A extensão foi atualizada. Por favor, recarregue a página (F5).'));
+        }
+        reject(err);
+      }
     });
   }
 

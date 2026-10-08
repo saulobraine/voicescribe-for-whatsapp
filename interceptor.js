@@ -4,9 +4,13 @@
   const blobStore = window.__wgtBlobStore;
 
   let isSilentCaptureActive = false;
+  let silentCaptureTimer = null;
 
   window.addEventListener('wgt-silent-capture-start', () => {
     isSilentCaptureActive = true;
+    // Rede de segurança: se o stop se perder, a captura expira sozinha
+    clearTimeout(silentCaptureTimer);
+    silentCaptureTimer = setTimeout(() => { isSilentCaptureActive = false; }, 30000);
     document.querySelectorAll('audio, video').forEach(el => {
       try {
         el.muted = true;
@@ -17,6 +21,28 @@
 
   window.addEventListener('wgt-silent-capture-stop', () => {
     isSilentCaptureActive = false;
+    clearTimeout(silentCaptureTimer);
+    // Restaura volume de todos os elementos mutados, sem forçar pause
+    // (a pausa correta é feita pelo content.js via botão do próprio WhatsApp)
+    document.querySelectorAll('audio, video').forEach(el => {
+      try {
+        if (el.paused) {
+          // Elemento já parado: apenas restaura volume
+          el.muted = false;
+          el.volume = 1;
+        } else {
+          // Elemento ainda tocando (caso raro): pausa e restaura
+          el.pause();
+          el.currentTime = 0;
+          setTimeout(() => {
+            try {
+              el.muted = false;
+              el.volume = 1;
+            } catch {}
+          }, 300);
+        }
+      } catch {}
+    });
   });
 
   const isAudioOrVideo = (type) => {
@@ -44,22 +70,58 @@
 
   // Responde a solicitações de conversão de áudio vindas do content script
   window.addEventListener('wgt-request-audio', async (event) => {
-    const { requestId, url } = event.detail || {};
+    const { requestId, url, minTimestamp } = event.detail || {};
     try {
-      let blob = url ? blobStore.get(url) : null;
+      let blob = null;
 
-      // Se não encontrou no mapa mas tem URL, tenta fetch no contexto da página
-      if (!blob && url) {
-        try {
-          const res = await fetch(url);
-          if (res.ok) blob = await res.blob();
-        } catch {}
+      // 1. Se informou URL, tenta obter diretamente do cache ou fetch
+      if (url) {
+        blob = blobStore.get(url);
+        if (!blob) {
+          try {
+            const res = await fetch(url);
+            if (res.ok) blob = await res.blob();
+          } catch {}
+        }
       }
 
-      // Se ainda não encontrou e temos blobs no store, tenta o mais recente
-      if (!blob && blobStore.size > 0) {
-        const allBlobs = Array.from(blobStore.values());
-        blob = allBlobs[allBlobs.length - 1];
+      // 2. Se informou minTimestamp, busca o blob mais recente criado a partir do início da captura
+      if (!blob && minTimestamp) {
+        let bestBlob = null;
+        let bestTime = 0;
+        for (const [, bObj] of blobStore.entries()) {
+          if (bObj && bObj.__wgtTimestamp >= minTimestamp) {
+            if (bObj.__wgtTimestamp >= bestTime) {
+              bestBlob = bObj;
+              bestTime = bObj.__wgtTimestamp;
+            }
+          }
+        }
+        if (bestBlob) {
+          blob = bestBlob;
+        }
+      }
+
+      // 3. Fallback: apenas se não houver restrição de tempo, verifica elementos de mídia no DOM
+      if (!blob && !minTimestamp) {
+        const audioElements = Array.from(document.querySelectorAll('audio, video')).filter(el => el.currentSrc || el.src);
+        for (const el of audioElements) {
+          const aUrl = el.currentSrc || el.src;
+          if (aUrl) {
+            blob = blobStore.get(aUrl);
+            if (!blob) {
+              try {
+                const res = await fetch(aUrl);
+                if (res.ok) {
+                  blob = await res.blob();
+                  break;
+                }
+              } catch {}
+            } else {
+              break;
+            }
+          }
+        }
       }
 
       if (!blob) {
@@ -91,24 +153,26 @@
   if (window.__wgtInterceptorInstalled) return;
   window.__wgtInterceptorInstalled = true;
 
-  // Intercepta reprodução de áudio para silenciar completamente durante a transcrição
+  // Intercepta reprodução de áudio: captura URL do áudio no play e silencia se captura ativa
   const originalPlay = HTMLMediaElement.prototype.play;
   HTMLMediaElement.prototype.play = function() {
+    const audioUrl = this.currentSrc || this.src;
+    if (audioUrl) {
+      window.dispatchEvent(new CustomEvent('wgt-audio', {
+        detail: { url: audioUrl, timestamp: Date.now() }
+      }));
+    }
     if (isSilentCaptureActive) {
       try {
         this.muted = true;
         this.volume = 0;
       } catch {}
-      const playPromise = originalPlay.apply(this, arguments);
-      setTimeout(() => {
-        if (isSilentCaptureActive) {
-          try {
-            this.pause();
-            this.currentTime = 0;
-          } catch {}
-        }
-      }, 60);
-      return playPromise;
+    } else if (this.muted && this.volume === 0) {
+      // Toque manual fora da captura: nunca fica mudo
+      try {
+        this.muted = false;
+        this.volume = 1;
+      } catch {}
     }
     return originalPlay.apply(this, arguments);
   };
@@ -156,8 +220,8 @@
   URL.createObjectURL = function(object) {
     const url = createObjectURL(object);
     if (object instanceof Blob && isAudioOrVideo(object.type)) {
+      object.__wgtTimestamp = Date.now();
       blobStore.set(url, object);
-      // Evita acúmulo excessivo em memória mantendo os últimos 50
       if (blobStore.size > 50) {
         const oldestKey = blobStore.keys().next().value;
         blobStore.delete(oldestKey);

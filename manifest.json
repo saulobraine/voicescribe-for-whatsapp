@@ -16,6 +16,7 @@
     "default_title": "WhatsApp Gemini Transcriber",
     "default_popup": "popup.html"
   },
+  "options_page": "admin.html",
   "background": {
     "service_worker": "background.js"
   },

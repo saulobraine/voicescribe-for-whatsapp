@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Gerenciar API Keys - WhatsApp Gemini Transcriber</title>
+  <style>
+    body{max-width:640px;margin:24px auto;padding:0 16px;background:#f0f2f5;color:#111b21;font:13px system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;box-sizing:border-box}
+    .card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.08);margin-bottom:16px}
+    h1{font-size:18px;margin:0 0 4px;color:#111b21}
+    .sub{color:#667781;margin:0 0 16px;font-size:13px}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:10px 8px;text-align:left;border-bottom:1px solid #e0e0e0;font-size:13px;vertical-align:middle}
+    th{background:#f8f9fa;color:#667781;font-weight:600}
+    .status-available{color:#087f5b;font-weight:500}
+    .status-limited{color:#c62828;font-weight:500}
+    .btn{padding:7px 12px;border:0;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;transition:opacity 0.2s}
+    .btn:hover{opacity:0.9}
+    .btn-add{background:#00a884;color:#fff;margin-bottom:12px}
+    .btn-save{background:#00a884;color:#fff}
+    .btn-cancel{background:#54656f;color:#fff}
+    .btn-danger{background:#ea4335;color:#fff}
+    .toggle{width:38px;height:20px;border-radius:10px;border:0;cursor:pointer;position:relative;transition:background 0.2s}
+    .toggle.active{background:#00a884}
+    .toggle.inactive{background:#ccc}
+    .toggle::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:transform 0.2s}
+    .toggle.active::after{transform:translateX(18px)}
+    .status-banner{margin-top:12px;padding:8px 12px;border-radius:6px;font-size:12px;display:none}
+    .status-banner.ok{background:#e8f5e9;color:#2e7d32;display:block}
+    .status-banner.err{background:#ffebee;color:#c62828;display:block}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🗝️ Pool de API Keys</h1>
+    <p class="sub">Gerencie múltiplas chaves Gemini para contornar limites de cota e alternar automaticamente.</p>
+    
+    <button class="btn btn-add" id="add-key-btn">➕ Adicionar Nova Chave</button>
+    
+    <table>
+      <thead>
+        <tr>
+          <th>Chave</th>
+          <th>Status</th>
+          <th>Cooldown</th>
+          <th>Uso</th>
+          <th>Ativa</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="keys-table">
+      </tbody>
+    </table>
+    
+    <div id="status-banner" class="status-banner"></div>
+  </div>
+  <script src="admin.js"></script>
+ </body>
+</html>
