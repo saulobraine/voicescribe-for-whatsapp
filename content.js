@@ -13,7 +13,6 @@
   const STYLE = 'wgt-style';
   let lastAudio = null;
   let lastAudioAt = 0;
-  let activeBubble = null;
 
   injectInterceptor();
 
@@ -48,21 +47,37 @@
       return nodes.every(node => {
         if (node.nodeType !== 1) return true;
         return node.classList?.contains(BUTTON) ||
-               node.classList?.contains('wgt-cached-container') ||
+               node.classList?.contains('wgt-container') ||
                node.classList?.contains('wgt-bubble') ||
-               node.querySelector?.(`.${BUTTON}, .wgt-cached-container, .wgt-bubble`);
+               node.querySelector?.(`.${BUTTON}, .wgt-container, .wgt-bubble`);
       });
     });
     if (isInternalMutation) return;
 
     clearTimeout(scan.timer);
-    scan.timer = setTimeout(() => void scan(), 300);
+    scan.timer = setTimeout(() => void scan(), 150);
   });
+
+  // Escuta scroll em qualquer contêiner da página (para virtualização do chat e histórico)
+  window.addEventListener('scroll', () => {
+    if (!isExtensionValid()) return;
+    clearTimeout(scan.timer);
+    scan.timer = setTimeout(() => void scan(), 150);
+  }, { capture: true, passive: true });
+
+  // Verificação periódica suave de segurança (heartbeat para mensagens recicladas)
+  const heartbeatInterval = setInterval(() => {
+    if (!isExtensionValid()) {
+      clearInterval(heartbeatInterval);
+      return;
+    }
+    void scan();
+  }, 1500);
 
   const startObserver = () => {
     if (!isExtensionValid()) return;
-    const main = document.querySelector('#main') || document.body;
-    if (main) observer.observe(main, { childList: true, subtree: true });
+    const target = document.body || document.documentElement;
+    if (target) observer.observe(target, { childList: true, subtree: true });
   };
 
   if (document.readyState === 'loading') {
@@ -84,12 +99,32 @@
     const style = document.createElement('style');
     style.id = STYLE;
     style.textContent = `
+      .wgt-container {
+        display: flex !important;
+        flex-direction: column !important;
+        box-sizing: border-box !important;
+        clear: both !important;
+        margin-top: 4px !important;
+        margin-bottom: 4px !important;
+        position: relative !important;
+        max-width: 100% !important;
+        z-index: 10 !important;
+      }
+      .wgt-container.wgt-in {
+        align-self: flex-start !important;
+        align-items: flex-start !important;
+        text-align: left !important;
+      }
+      .wgt-container.wgt-out {
+        align-self: flex-end !important;
+        align-items: flex-end !important;
+        text-align: right !important;
+      }
       .${BUTTON} {
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        margin: 6px 0 0 8px !important;
-        margin-inline: calc(var(--x53dyk0) + 10px) !important;
+        margin: 2px 0 4px 0 !important;
         padding: 4px 10px !important;
         border: 0 !important;
         border-radius: 12px !important;
@@ -103,20 +138,33 @@
       .${BUTTON}:disabled { opacity: .6 !important; cursor: wait !important; }
       .wgt-bubble {
         position: relative !important;
-        margin: 6px 0 0 12px !important;
-        margin-inline: calc(var(--x53dyk0) + 10px) !important;
+        margin: 4px 0 !important;
         padding: 10px 14px !important;
-        padding-inline-end: var(--x53dyk0, 14px) !important;
+        padding-right: 32px !important;
         border-radius: 8px !important;
         background: #f0f2f5 !important;
         color: #111b21 !important;
         font: 13px/1.4 system-ui,sans-serif !important;
         line-height: 1.4 !important;
         white-space: pre-wrap !important;
-        max-width: 360px !important;
+        max-width: 380px !important;
         box-sizing: border-box !important;
         display: inline-block !important;
-        vertical-align: top !important;
+        text-align: left !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.12) !important;
+      }
+      .wgt-container.wgt-out .wgt-bubble {
+        background: #d9fdd3 !important;
+      }
+      .dark .wgt-container.wgt-in .wgt-bubble,
+      [data-theme="dark"] .wgt-container.wgt-in .wgt-bubble {
+        background: #202c33 !important;
+        color: #e9edef !important;
+      }
+      .dark .wgt-container.wgt-out .wgt-bubble,
+      [data-theme="dark"] .wgt-container.wgt-out .wgt-bubble {
+        background: #005c4b !important;
+        color: #e9edef !important;
       }
       .wgt-close {
         position: absolute !important;
@@ -133,6 +181,9 @@
         align-items: center !important;
         justify-content: center !important;
       }
+      .wgt-close:hover {
+        color: #111b21 !important;
+      }
       .wgt-copy {
         display: inline-flex !important;
         align-items: center !important;
@@ -141,15 +192,19 @@
         border: 0 !important;
         border-radius: 5px !important;
         padding: 4px 8px !important;
-        background: #d9fdd3 !important;
-        color: #111b21 !important;
+        background: rgba(0, 168, 132, 0.15) !important;
+        color: #008069 !important;
         font: 600 12px/1 system-ui,sans-serif !important;
         cursor: pointer !important;
       }
-      .wgt-cached-container {
-        display: block !important;
-        width: 100% !important;
-        clear: both !important;
+      .dark .wgt-copy,
+      [data-theme="dark"] .wgt-copy {
+        background: rgba(255, 255, 255, 0.15) !important;
+        color: #e9edef !important;
+      }
+      .dark .wgt-close:hover,
+      [data-theme="dark"] .wgt-close:hover {
+        color: #e9edef !important;
       }
     `;
     document.documentElement.appendChild(style);
@@ -157,9 +212,114 @@
 
   function findMessage(el) {
     if (!el?.closest) return null;
-    // Prioriza o wrapper estável com data-id: 1 elemento canônico por mensagem
-    // (evita processar msg-container e wrapper como "mensagens diferentes")
-    return el.closest('[data-id]') || el.closest('[role="row"], .message-in, .message-out, .msg-container');
+    return el.closest('[data-id]') ||
+           el.closest('[data-testid^="conv-msg-"]') ||
+           el.closest('[role="row"]') ||
+           el.closest('.message-in, .message-out, .msg-container');
+  }
+
+  function getMessageDirection(message) {
+    if (!message) return 'in';
+
+    // 1. data-id explícito antigo (true_ = enviada, false_ = recebida)
+    const dataId = message.getAttribute?.('data-id') || message.dataset?.id || '';
+    if (dataId.startsWith('true_')) return 'out';
+    if (dataId.startsWith('false_')) return 'in';
+
+    // 2. Rabicho do balão da mensagem (tail-out vs tail-in)
+    if (message.querySelector?.('[data-testid="tail-out"], [data-icon="tail-out"], span.tail-out')) {
+      return 'out';
+    }
+    if (message.querySelector?.('[data-testid="tail-in"], [data-icon="tail-in"], span.tail-in')) {
+      return 'in';
+    }
+
+    // 3. Rótulo de acessibilidade do remetente ("Você:" / "You:")
+    if (message.querySelector?.('span[aria-label^="Você" i], span[aria-label^="You" i]')) {
+      return 'out';
+    }
+
+    // 4. Classes CSS clássicas
+    if (message.classList?.contains('message-out') || message.closest?.('.message-out') || message.querySelector?.('.message-out')) {
+      return 'out';
+    }
+    if (message.classList?.contains('message-in') || message.closest?.('.message-in') || message.querySelector?.('.message-in')) {
+      return 'in';
+    }
+
+    // 5. Metadados e status de envio (exclusivos de mensagens enviadas)
+    const msgMeta = message.querySelector?.('[data-testid="msg-meta"]');
+    if (msgMeta) {
+      if (msgMeta.querySelector?.(
+        '[data-icon*="check"], [data-icon="msg-time"], ' +
+        'span[aria-label*="Entregue" i], span[aria-label*="Lido" i], span[aria-label*="Enviad" i], ' +
+        'span[aria-label*="Delivered" i], span[aria-label*="Read" i], span[aria-label*="Sent" i]'
+      )) {
+        return 'out';
+      }
+      const metaSvgTitles = msgMeta.querySelectorAll?.('svg title');
+      for (const t of metaSvgTitles) {
+        const text = (t.textContent || '').toLowerCase();
+        if (text.includes('read') || text.includes('delivered') || text.includes('check') || text.includes('time')) {
+          return 'out';
+        }
+      }
+    }
+
+    // 6. Verificação geométrica de posição relativa à linha do chat (mensagens consecutivas sem tail)
+    try {
+      const msgBox = message.querySelector?.('[data-testid="msg-container"]') || message;
+      const row = message.closest?.('[role="row"]') || 
+                  message.closest?.('[data-testid^="conv-msg-"]') || 
+                  document.querySelector('#main') || 
+                  message;
+      if (msgBox && row) {
+        const bubbleRect = msgBox.getBoundingClientRect();
+        const rowRect = row.getBoundingClientRect();
+        if (rowRect.width > 50 && bubbleRect.width > 50) {
+          const distLeft = bubbleRect.left - rowRect.left;
+          const distRight = rowRect.right - bubbleRect.right;
+          // Mensagem enviada fica colada na margem direita (distRight < distLeft)
+          // Mensagem recebida fica colada na margem esquerda (distLeft < distRight)
+          if (distRight < distLeft) {
+            return 'out';
+          }
+          return 'in';
+        }
+      }
+    } catch {}
+
+    return 'in';
+  }
+
+  function getOrCreateContainer(message, target = null) {
+    const direction = getMessageDirection(message);
+    let container = message.querySelector('.wgt-container');
+    const msgContainer = target?.closest?.('[data-testid="msg-container"]') || message.querySelector?.('[data-testid="msg-container"]');
+
+    // Se já existe, garante que a classe de direção está atualizada e reposiciona se necessário
+    if (container) {
+      if (!container.classList.contains(`wgt-${direction}`)) {
+        container.classList.remove('wgt-in', 'wgt-out');
+        container.classList.add(`wgt-${direction}`);
+      }
+      if (msgContainer && msgContainer.parentNode && container.parentNode !== msgContainer.parentNode) {
+        msgContainer.after(container);
+      }
+      return container;
+    }
+
+    container = document.createElement('div');
+    container.className = `wgt-container wgt-${direction}`;
+
+    // Insere o container logo após o msg-container para herdar o alinhamento exato da mensagem
+    if (msgContainer && msgContainer.parentNode) {
+      msgContainer.after(container);
+    } else {
+      message.appendChild(container);
+    }
+
+    return container;
   }
 
   function findMedia(message) {
@@ -169,24 +329,46 @@
     return media || null;
   }
 
+  function updateExistingContainers() {
+    document.querySelectorAll('.wgt-container').forEach(container => {
+      const message = findMessage(container);
+      if (!message) return;
+      const direction = getMessageDirection(message);
+      if (!container.classList.contains(`wgt-${direction}`)) {
+        container.classList.remove('wgt-in', 'wgt-out');
+        container.classList.add(`wgt-${direction}`);
+      }
+      const msgContainer = message.querySelector?.('[data-testid="msg-container"]');
+      if (msgContainer && msgContainer.parentNode && container.parentNode !== msgContainer.parentNode) {
+        msgContainer.after(container);
+      }
+    });
+  }
+
   async function scan() {
     if (!isExtensionValid()) {
       observer.disconnect();
       return;
     }
 
+    updateExistingContainers();
+
     const candidates = document.querySelectorAll(
-      'audio, video, [data-testid*="audio"], [data-testid*="ptt"], [data-testid*="voice"], [data-icon*="audio-play"], [data-icon*="ptt"], span.ptt-status'
+      'audio, video, ' +
+      '[data-testid*="audio"], [data-testid*="ptt"], [data-testid*="voice"], ' +
+      '[data-icon*="audio-play"], [data-icon*="ptt"], span.ptt-status, ' +
+      'button[aria-label*="Reproduzir" i], button[aria-label*="Play" i], ' +
+      '[aria-label*="Mensagem de voz" i], [aria-label*="Voice message" i], ' +
+      'div[role="slider"][aria-label*="voz" i], div[role="slider"][aria-label*="voice" i]'
     );
 
     const seen = new Set();
     for (const target of candidates) {
       const message = findMessage(target);
-      if (!message || seen.has(message) || message.querySelector(`.${BUTTON}`) || message.dataset.wgtProcessed) continue;
-      
+      if (!message || seen.has(message) || message.querySelector(`.${BUTTON}`)) continue;
+
       seen.add(message);
-      message.dataset.wgtProcessed = 'true';
-      
+
       const button = addButton(message, target);
       void checkMessageCache(message, button);
     }
@@ -207,8 +389,9 @@
         button.title = 'Transcrição em cache (clique para alternar)';
       }
 
-      if (!message.querySelector('.wgt-cached-container') && !message.dataset.wgtClosed) {
-        showCachedBubble(message, cached);
+      const container = getOrCreateContainer(message);
+      if (!container.querySelector('.wgt-bubble') && !message.dataset.wgtClosed) {
+        showBubble(container, cached, false, message);
       }
     } catch (e) {
       if (e?.message?.includes('Extension context invalidated')) {
@@ -220,49 +403,17 @@
   }
 
   function showCachedBubble(message, text) {
-    if (message.querySelector('.wgt-cached-container')) return;
-
-    // Remove bolha transitória de clique anterior (evita 2 textos na mesma mensagem)
-    message.querySelectorAll('.wgt-bubble').forEach(b => b.remove());
-
-    const wrapper = document.createElement('div');
-    wrapper.className = 'wgt-cached-container';
-    
-    const bubble = document.createElement('div');
-    bubble.className = 'wgt-bubble';
-
-    const content = document.createElement('div');
-    content.textContent = text;
-    bubble.appendChild(content);
-
-    const copyBtn = document.createElement('button');
-    copyBtn.className = 'wgt-copy';
-    copyBtn.textContent = 'Copiar';
-    copyBtn.addEventListener('click', async () => {
-      await navigator.clipboard.writeText(text);
-      copyBtn.textContent = 'Copiado!';
-      setTimeout(() => {
-        if (copyBtn.isConnected) copyBtn.textContent = 'Copiar';
-      }, 1200);
-    });
-    bubble.appendChild(copyBtn);
-
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'wgt-close';
-    closeBtn.textContent = '×';
-    closeBtn.title = 'Fechar';
-    closeBtn.addEventListener('click', () => {
-      wrapper.remove();
-      message.dataset.wgtClosed = 'true';
-    });
-    bubble.appendChild(closeBtn);
-    
-    wrapper.appendChild(bubble);
-    message.appendChild(wrapper);
+    const container = getOrCreateContainer(message);
+    showBubble(container, text, false, message);
   }
 
   function addButton(message, target) {
-    const button = document.createElement('button');
+    const container = getOrCreateContainer(message, target);
+
+    let button = container.querySelector(`.${BUTTON}`);
+    if (button) return button;
+
+    button = document.createElement('button');
     button.className = BUTTON;
     button.type = 'button';
     button.textContent = '🎙 Transcrever';
@@ -274,7 +425,7 @@
       if (button.disabled) return;
 
       if (!isExtensionValid()) {
-        showBubble(button, 'A extensão foi atualizada. Recarregue a página (F5) para continuar.', true);
+        showBubble(container, 'A extensão foi atualizada. Recarregue a página (F5) para continuar.', true, message);
         return;
       }
 
@@ -282,20 +433,20 @@
       const cached = await getCachedTranscript(message);
       if (cached) {
         button.textContent = '✓ Cache';
-        const existing = message.querySelector('.wgt-cached-container');
+        const existing = container.querySelector('.wgt-bubble');
         if (existing) {
           existing.remove();
           message.dataset.wgtClosed = 'true';
         } else {
           delete message.dataset.wgtClosed;
-          showCachedBubble(message, cached);
+          showBubble(container, cached, false, message);
         }
         return;
       }
 
       button.disabled = true;
       button.textContent = '⏳ Transcrevendo...';
-      closeBubble();
+      closeBubble(container);
 
       try {
         const dataUrl = await obtainAudio(message, target);
@@ -303,12 +454,12 @@
         button.textContent = '✓ Transcrito';
         await cacheTranscript(message, result); // Salva no cache
         delete message.dataset.wgtClosed;
-        showCachedBubble(message, result);
+        showBubble(container, result, false, message);
       } catch (error) {
         // Cota atingida nas chaves do pool
         if (error.message.includes('quota') || error.message.includes('rate limit') || error.message.includes('Limite da API')) {
           button.textContent = '🕐 Cooldown';
-          showBubble(button, `${error.message}\n\nDica: você pode adicionar novas chaves em "Gerenciar API Keys".`, false);
+          showBubble(container, `${error.message}\n\nDica: você pode adicionar novas chaves em "Gerenciar API Keys".`, false, message);
           setTimeout(() => {
             if (button.isConnected) {
               button.disabled = false;
@@ -321,7 +472,7 @@
         // Alta demanda da API é transitória — mensagem informativa, não erro
         if (/high demand|overloaded|try again later/i.test(error.message || '')) {
           button.textContent = '⏳ Aguarde';
-          showBubble(button, 'A API do Gemini está sob alta demanda.\nTente novamente em instantes.', false);
+          showBubble(container, 'A API do Gemini está sob alta demanda.\nTente novamente em instantes.', false, message);
           setTimeout(() => {
             if (button.isConnected) {
               button.disabled = false;
@@ -334,7 +485,7 @@
         // Outros erros são tratados normalmente
         console.error('[WGT]', error);
         button.textContent = '✕ Erro';
-        showBubble(button, error.message || 'Falha na transcrição.', true);
+        showBubble(container, error.message || 'Falha na transcrição.', true, message);
       } finally {
         setTimeout(() => {
           if (button.isConnected && !button.textContent.includes('Cooldown')) {
@@ -349,13 +500,7 @@
       }
     });
 
-    const player = target.closest?.('[data-testid="audio-player-wrapper"], [data-testid="ptt-player-wrapper"]') || target;
-    if (player?.parentNode === message) player.after(button);
-    else {
-      const appendAnchor = message.querySelector('.selectable-text, .chat-msg-symbol') || message;
-      appendAnchor.appendChild(button);
-    }
-
+    container.appendChild(button);
     return button;
   }
 
@@ -691,8 +836,14 @@
     });
   }
 
-  function showBubble(button, text, error = false) {
-    closeBubble();
+  function showBubble(target, text, error = false, message = null) {
+    const container = target?.classList?.contains('wgt-container')
+      ? target
+      : (target?.closest?.('.wgt-container') || target?.parentElement);
+    if (!container) return;
+
+    closeBubble(container);
+
     const bubble = document.createElement('div');
     bubble.className = 'wgt-bubble';
     if (error) bubble.style.background = '#ffe8e6';
@@ -704,29 +855,42 @@
     if (!error) {
       const copy = document.createElement('button');
       copy.className = 'wgt-copy';
+      copy.type = 'button';
       copy.textContent = 'Copiar';
       copy.addEventListener('click', async () => {
         await navigator.clipboard.writeText(text);
         copy.textContent = 'Copiado!';
-        setTimeout(() => copy.textContent = 'Copiar', 1200);
+        setTimeout(() => {
+          if (copy.isConnected) copy.textContent = 'Copiar';
+        }, 1200);
       });
       bubble.appendChild(copy);
     }
 
     const close = document.createElement('button');
     close.className = 'wgt-close';
+    close.type = 'button';
     close.textContent = '×';
     close.title = 'Fechar';
-    close.addEventListener('click', closeBubble);
+    close.addEventListener('click', () => {
+      bubble.remove();
+      if (message) message.dataset.wgtClosed = 'true';
+    });
     bubble.appendChild(close);
 
-    button.parentElement?.appendChild(bubble);
-    activeBubble = bubble;
+    container.appendChild(bubble);
   }
 
-  function closeBubble() {
-    activeBubble?.remove();
-    activeBubble = null;
+  function closeBubble(target = null) {
+    const container = target?.classList?.contains('wgt-container')
+      ? target
+      : (target?.closest?.('.wgt-container') || target?.parentElement);
+
+    if (container) {
+      container.querySelectorAll('.wgt-bubble').forEach(b => b.remove());
+    } else {
+      document.querySelectorAll('.wgt-bubble').forEach(b => b.remove());
+    }
   }
 
   function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
