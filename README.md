@@ -159,6 +159,46 @@ build/                       # Artefatos compilados prontos para uso (gerado por
 
 ---
 
+## 🚀 CI/CD & Publicação Contínua nas Lojas
+
+### 🌿 Diretiva de Branches & Git Flow
+- **Branch de Desenvolvimento (`develop`):** **Todos os commits e trabalhos em andamento devem ser enviados e publicados obrigatoriamente na branch `develop`**.
+- **Branch Principal (`master` / `main`):** Protegida. Recebe alterações exclusivamente por meio de Pull Requests originados de `develop`.
+- **Gatilho de Publicação:** O merge de um PR de `develop` para a branch principal dispara o pipeline de versionamento automático SemVer e deploy nas lojas.
+
+### ⚙️ Pipeline Automatizado (GitHub Actions)
+O repositório conta com um workflow automatizado em [`.github/workflows/publish-extension.yml`](.github/workflows/publish-extension.yml). Sempre que um Pull Request é aprovado e mergeado na branch principal:
+
+1. Os commits são inspecionados via Conventional Commits para calcular a próxima versão SemVer (`patch`, `minor` ou `major`).
+2. O campo `"version"` é sincronizado automaticamente em `package.json` e `manifest.json`.
+3. Uma **Git Tag** e uma **GitHub Release** são geradas com notas de atualização automáticas.
+4. A extensão é compilada em TypeScript e o pacote `.zip` gerado é publicado nas lojas oficiais.
+
+### 🔑 Configuração de GitHub Secrets
+
+Para habilitar a publicação automática, adicione as seguintes variáveis secretas em **Settings > Secrets and variables > Actions** do repositório:
+
+#### 🌐 Google Chrome Web Store
+> **Nota:** O primeiro upload da extensão deve ser feito manualmente no [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole) para registrar o item e obter o `CHROME_EXTENSION_ID`.
+
+| Secret | Descrição | Onde Obter |
+| :--- | :--- | :--- |
+| `CHROME_EXTENSION_ID` | ID alfanumérico único da extensão na loja | URL do item no Chrome Web Store Developer Console |
+| `CHROME_CLIENT_ID` | OAuth 2.0 Client ID do Google Cloud | [Google Cloud Console](https://console.cloud.google.com/) > APIs & Services > Credentials |
+| `CHROME_CLIENT_SECRET` | OAuth 2.0 Client Secret do Google Cloud | [Google Cloud Console](https://console.cloud.google.com/) > APIs & Services > Credentials |
+| `CHROME_REFRESH_TOKEN` | Token de atualização OAuth 2.0 | Gerado via fluxo OAuth autorizando a Chrome Web Store API |
+
+#### 🌐 Microsoft Edge Add-ons
+> **Nota:** O primeiro upload também deve ser feito manualmente no [Microsoft Partner Center](https://partner.microsoft.com/dashboard/microsoftedge/overview).
+
+| Secret | Descrição | Onde Obter |
+| :--- | :--- | :--- |
+| `EDGE_PRODUCT_ID` | ID do produto no painel de extensões do Edge | Partner Center > Visão Geral da Extensão |
+| `EDGE_CLIENT_ID` | Client ID da API de publicação | Partner Center > Configurações da Conta > Gerenciamento de Acesso à API |
+| `EDGE_API_KEY` | Chave de API secreta (Client Secret) | Partner Center > Configurações da Conta > Gerenciamento de Acesso à API |
+
+---
+
 ## 🔒 Segurança e Privacidade
 
 - **Armazenamento 100% Local:** Suas chaves de API e transcrições ficam guardadas exclusivamente no `chrome.storage.local` do seu navegador.

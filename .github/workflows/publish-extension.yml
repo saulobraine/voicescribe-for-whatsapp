@@ -1,0 +1,111 @@
+name: Auto Release & Publish on PR Merge
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  version-and-publish:
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    steps:
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Instalar Dependências
+        run: npm ci
+
+      - name: Calcular Próxima Versão SemVer
+        id: semver
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: patch
+          dry_run: true
+
+      - name: Sincronizar Versão no manifest.json e package.json
+        env:
+          NEW_VERSION: ${{ steps.semver.outputs.new_version }}
+        run: |
+          echo "Atualizando para a versão $NEW_VERSION..."
+          npm version $NEW_VERSION --no-git-tag-version
+          node -e "
+            const fs = require('fs');
+            const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+            manifest.version = process.env.NEW_VERSION;
+            fs.writeFileSync('manifest.json', JSON.stringify(manifest, null, 2) + '\n');
+          "
+
+      - name: Commit e Tag da Nova Versão
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json manifest.json
+          git commit -m "chore(release): bump version to ${{ steps.semver.outputs.new_tag }} [skip ci]"
+          git tag ${{ steps.semver.outputs.new_tag }}
+          git push origin HEAD --tags
+
+      - name: Typecheck e Build da Extensão
+        env:
+          NODE_OPTIONS: "--experimental-strip-types"
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Compactar Pacote de Produção
+        run: |
+          cd build
+          zip -r ../whatsapp-gemini-transcriber.zip .
+          cd ..
+
+      - name: Criar GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.semver.outputs.new_tag }}
+          name: Release ${{ steps.semver.outputs.new_tag }}
+          body: ${{ steps.semver.outputs.changelog }}
+          files: whatsapp-gemini-transcriber.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Publicação automática na Chrome Web Store
+      - name: Upload para Chrome Web Store
+        if: env.CHROME_CLIENT_ID != ''
+        uses: mnao305/chrome-extension-upload@v5.0.0
+        with:
+          file-path: whatsapp-gemini-transcriber.zip
+          extension-id: ${{ secrets.CHROME_EXTENSION_ID }}
+          client-id: ${{ secrets.CHROME_CLIENT_ID }}
+          client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
+          refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          publish: true
+        env:
+          CHROME_CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+
+      # Publicação automática no Microsoft Edge Add-ons
+      - name: Upload para Microsoft Edge Add-ons
+        if: env.EDGE_CLIENT_ID != ''
+        uses: wewatch/edge-addon-publish@v1.2.0
+        with:
+          product-id: ${{ secrets.EDGE_PRODUCT_ID }}
+          client-id: ${{ secrets.EDGE_CLIENT_ID }}
+          api-key: ${{ secrets.EDGE_API_KEY }}
+          file-path: whatsapp-gemini-transcriber.zip
+        env:
+          EDGE_CLIENT_ID: ${{ secrets.EDGE_CLIENT_ID }}
