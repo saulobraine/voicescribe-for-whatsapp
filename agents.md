@@ -107,13 +107,21 @@ Since there's no build system, the main commands are for **loading/unloading the
 - **API Key Issues**: Verify the Gemini API key is valid and has proper permissions
 - **Content Script Conflicts**: WhatsApp Web changes can break selectors — test frequently
 
+## Git & Branching Policy (CRITICAL)
+
+- **Target Branch for Commits**: **SEMPRE publicar e enviar commits para a branch `develop`**.
+- **Regra de Ouro**: Nunca comitar diretamente na branch `main` ou `master`.
+- **Fluxo de Release**: `commits / feature branches` ➔ `develop` ➔ `Pull Request para master`.
+- O merge de um PR de `develop` para `master` é o único gatilho autorizado a disparar o versionamento automático e publicação nas lojas.
+
 ## How to Contribute
 
-1. **Fork** the repository
-2. Create a new branch for your feature
-3. Write tests for your changes
-4. Implement the feature
-5. Run all tests
-6. Submit a pull request
+1. **Fork** the repository or checkout the `develop` branch.
+2. Create your branch based off `develop` (or work directly on `develop` for active tasks).
+3. Write tests for your changes.
+4. Implement the feature/fix.
+5. Run all tests and typecheck (`npm test && npm run typecheck`).
+6. **Always push commits to `develop`** (`git push origin develop`).
+7. Open a Pull Request from `develop` to `master` for release.
 
 This project values clean code, minimal dependencies, and clear communication. All contributions should follow these principles.

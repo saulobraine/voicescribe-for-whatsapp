@@ -12,7 +12,7 @@ const entryPoints = [
   { in: 'src/admin/index.ts', out: 'admin' },
 ];
 
-function copyStaticFiles() {
+function copyStaticFiles(): void {
   if (!fs.existsSync('build')) {
     fs.mkdirSync('build', { recursive: true });
   }
@@ -29,12 +29,12 @@ function copyStaticFiles() {
   }
 }
 
-async function runBuild() {
+async function runBuild(): Promise<void> {
   copyStaticFiles();
 
   const context = await esbuild.context({
     bundle: true,
-    format: 'esm',
+    format: 'iife',
     target: 'es2022',
     sourcemap: false,
     logLevel: 'info',
@@ -54,7 +54,7 @@ async function runBuild() {
   console.log('Build em TypeScript concluído com sucesso em ./build');
 }
 
-runBuild().catch((error) => {
+runBuild().catch((error: unknown) => {
   console.error('Falha no processo de compilação:', error);
   process.exit(1);
 });

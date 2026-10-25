@@ -1,12 +1,11 @@
 import esbuild from 'esbuild';
-import { glob } from 'node:fs';
-import { promisify } from 'node:util';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 
-async function runTests() {
-  const testFiles = fs.readdirSync('tests')
+async function runTests(): Promise<void> {
+  const testFiles = fs
+    .readdirSync('tests')
     .filter((file) => file.endsWith('.test.ts'))
     .map((file) => path.join('tests', file));
 
@@ -24,8 +23,7 @@ async function runTests() {
     shell: true,
   });
 
-  child.on('close', (code) => {
-    // Limpa pasta temporária de testes
+  child.on('close', (code: number | null) => {
     try {
       fs.rmSync('dist-test', { recursive: true, force: true });
     } catch {}
@@ -33,7 +31,7 @@ async function runTests() {
   });
 }
 
-runTests().catch((err) => {
+runTests().catch((err: unknown) => {
   console.error(err);
   process.exit(1);
 });

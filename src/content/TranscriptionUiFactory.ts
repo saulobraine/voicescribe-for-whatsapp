@@ -111,8 +111,8 @@ export class TranscriptionUiFactory {
         flex-direction: column !important;
         box-sizing: border-box !important;
         clear: both !important;
-        margin-top: 4px !important;
-        margin-bottom: 4px !important;
+        margin-top: 5px !important;
+        margin-bottom: 5px !important;
         position: relative !important;
         max-width: 100% !important;
         z-index: 10 !important;
@@ -131,88 +131,115 @@ export class TranscriptionUiFactory {
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        margin: 2px 0 4px 0 !important;
-        padding: 4px 10px !important;
-        border: 0 !important;
-        border-radius: 12px !important;
-        background: #00a884 !important;
-        color: #fff !important;
-        font: 600 11px/1.2 system-ui,sans-serif !important;
+        margin: 3px 0 5px 0 !important;
+        padding: 5px 12px !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        border-radius: 14px !important;
+        background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%) !important;
+        color: #ffffff !important;
+        font: 600 11.5px/1.2 system-ui, -apple-system, sans-serif !important;
         cursor: pointer !important;
         z-index: 9999 !important;
-        min-height: 24px !important;
+        min-height: 25px !important;
+        box-shadow: 0 2px 8px rgba(6, 182, 212, 0.35) !important;
+        transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
       }
-      .wgt-transcribe-button:disabled { opacity: .6 !important; cursor: wait !important; }
+      .wgt-transcribe-button:hover {
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 14px rgba(6, 182, 212, 0.5) !important;
+        filter: brightness(1.08) !important;
+      }
+      .wgt-transcribe-button:active {
+        transform: translateY(0) !important;
+      }
+      .wgt-transcribe-button:disabled {
+        opacity: 0.65 !important;
+        cursor: wait !important;
+        transform: none !important;
+      }
       .wgt-bubble {
         position: relative !important;
-        margin: 4px 0 !important;
-        padding: 10px 14px !important;
-        padding-right: 32px !important;
-        border-radius: 8px !important;
-        background: #f0f2f5 !important;
-        color: #111b21 !important;
-        font: 13px/1.4 system-ui,sans-serif !important;
-        line-height: 1.4 !important;
+        margin: 5px 0 !important;
+        padding: 11px 15px !important;
+        padding-right: 34px !important;
+        border-radius: 12px !important;
+        background: #f8fafc !important;
+        border: 1px solid rgba(6, 182, 212, 0.25) !important;
+        color: #0f172a !important;
+        font: 13px/1.45 system-ui, -apple-system, sans-serif !important;
         white-space: pre-wrap !important;
-        max-width: 380px !important;
+        max-width: 400px !important;
         box-sizing: border-box !important;
         display: inline-block !important;
         text-align: left !important;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.12) !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
       }
       .wgt-container.wgt-out .wgt-bubble {
-        background: #d9fdd3 !important;
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(6, 182, 212, 0.12) 100%) !important;
+        border-color: rgba(16, 185, 129, 0.35) !important;
+        color: #064e3b !important;
       }
       .dark .wgt-container.wgt-in .wgt-bubble,
       [data-theme="dark"] .wgt-container.wgt-in .wgt-bubble {
-        background: #202c33 !important;
-        color: #e9edef !important;
+        background: #0f172a !important;
+        color: #f1f5f9 !important;
+        border-color: rgba(6, 182, 212, 0.3) !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
       }
       .dark .wgt-container.wgt-out .wgt-bubble,
       [data-theme="dark"] .wgt-container.wgt-out .wgt-bubble {
-        background: #005c4b !important;
-        color: #e9edef !important;
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(6, 182, 212, 0.2) 100%) !important;
+        color: #f1f5f9 !important;
+        border-color: rgba(16, 185, 129, 0.45) !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
       }
       .wgt-close {
         position: absolute !important;
         right: 8px !important;
-        top: 6px !important;
+        top: 8px !important;
         border: 0 !important;
         background: transparent !important;
-        color: #667781 !important;
+        color: #94a3b8 !important;
         font-size: 18px !important;
         cursor: pointer !important;
-        width: 20px !important;
-        height: 20px !important;
+        width: 22px !important;
+        height: 22px !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
+        border-radius: 4px !important;
+        transition: color 0.15s ease !important;
       }
       .wgt-close:hover,
       .dark .wgt-close:hover,
       [data-theme="dark"] .wgt-close:hover {
-        color: #111b21 !important;
-      }
-      .dark .wgt-close:hover {
-        color: #e9edef !important;
+        color: #ef4444 !important;
+        background: rgba(239, 68, 68, 0.1) !important;
       }
       .wgt-copy {
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        margin-top: 8px !important;
-        border: 0 !important;
-        border-radius: 5px !important;
-        padding: 4px 8px !important;
-        background: rgba(0, 168, 132, 0.15) !important;
-        color: #008069 !important;
-        font: 600 12px/1 system-ui,sans-serif !important;
+        margin-top: 9px !important;
+        border: 1px solid rgba(6, 182, 212, 0.35) !important;
+        border-radius: 6px !important;
+        padding: 5px 10px !important;
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(6, 182, 212, 0.12) 100%) !important;
+        color: #0284c7 !important;
+        font: 600 12px/1 system-ui, -apple-system, sans-serif !important;
         cursor: pointer !important;
+        transition: all 0.15s ease !important;
+      }
+      .wgt-copy:hover {
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.22) 0%, rgba(6, 182, 212, 0.22) 100%) !important;
+        border-color: rgba(6, 182, 212, 0.6) !important;
+        transform: translateY(-1px) !important;
       }
       .dark .wgt-copy,
       [data-theme="dark"] .wgt-copy {
-        background: rgba(255, 255, 255, 0.15) !important;
-        color: #e9edef !important;
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(6, 182, 212, 0.2) 100%) !important;
+        border-color: rgba(6, 182, 212, 0.45) !important;
+        color: #38bdf8 !important;
       }
     `;
     document.documentElement.appendChild(styleElement);
