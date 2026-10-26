@@ -204,6 +204,7 @@ Para habilitar a publicação automática, adicione as seguintes variáveis secr
 - **Armazenamento 100% Local:** Suas chaves de API e transcrições ficam guardadas exclusivamente no `chrome.storage.local` do seu navegador.
 - **Sem Servidores Intermediários:** As requisições de áudio vão diretamente do seu navegador aos endpoints HTTPS oficiais da Google (`generativelanguage.googleapis.com`).
 - **Nenhuma Coleta de Dados:** O código não possui telemetria, rastreadores ou chamadas para servidores de terceiros.
+- **Política de Privacidade:** Consulte nossa [Política de Privacidade Completa](PRIVACY_POLICY.md) em conformidade com as diretrizes da Chrome Web Store, LGPD e GDPR.
 
 ---
 
