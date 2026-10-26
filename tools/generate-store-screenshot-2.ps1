@@ -1,6 +1,6 @@
 Add-Type -AssemblyName System.Drawing
 
-$srcDrop = Join-Path $PSScriptRoot "..\store\Captura de tela_26-10-2026_0731_affaohcbcihedijbhndligbbpmcmfdle.jpeg"
+$srcDrop = Join-Path $PSScriptRoot "sources\source-ss2-admin.jpg"
 $logoPath = (Resolve-Path "$PSScriptRoot\..\icons\icon128.png").Path
 $outputDir = "$PSScriptRoot\..\store"
 
@@ -22,6 +22,7 @@ $canvasHeight = 800
 # Formato 24bppRgb sem canal alfa
 $bmp = New-Object System.Drawing.Bitmap($canvasWidth, $canvasHeight, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
 $g = [System.Drawing.Graphics]::FromImage($bmp)
+$global:g = $g
 $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
 $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
 $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
@@ -62,6 +63,9 @@ $subFont = New-Object System.Drawing.Font($googleSans, 12, [System.Drawing.FontS
 $badgeTitleFont = New-Object System.Drawing.Font($googleSans, 11, [System.Drawing.FontStyle]::Bold)
 $badgeDescFont = New-Object System.Drawing.Font($googleSans, 9, [System.Drawing.FontStyle]::Regular)
 $pillFont = New-Object System.Drawing.Font($googleSans, 10, [System.Drawing.FontStyle]::Bold)
+$global:badgeTitleFont = $badgeTitleFont
+$global:badgeDescFont = $badgeDescFont
+$global:pillFont = $pillFont
 
 # Eyebrow Pill com medicao dinamica
 $tagText = "POOL INTELIGENTE & ROTAÇÃO DE CHAVES"
@@ -158,6 +162,7 @@ DrawFeatureCard -x $rightX -y 440 -w $sideCardW -h $sideCardH -bulletColor ([Sys
 
 # 5. Barra Inferior com Destaques
 $pillY = 728
+$global:pillY = $pillY
 function DrawBottomPill {
     param($x, $w, $text, $accentColor)
     $bg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(17, 24, 39))

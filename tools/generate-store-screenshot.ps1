@@ -1,6 +1,6 @@
 Add-Type -AssemblyName System.Drawing
 
-$srcDrop = "C:\Users\admin\AppData\Local\Temp\Maestri-drops\5b92b5b4-4630-45da-8c64-5b861fa0e22a.png"
+$srcDrop = Join-Path $PSScriptRoot "sources\source-ss1-chat.png"
 $logoPath = (Resolve-Path "$PSScriptRoot\..\icons\icon128.png").Path
 $outputDir = "$PSScriptRoot\..\store"
 
@@ -22,6 +22,7 @@ $canvasHeight = 800
 # Formato 24bppRgb sem canal alfa (requisito estrito da Chrome Web Store)
 $bmp = New-Object System.Drawing.Bitmap($canvasWidth, $canvasHeight, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
 $g = [System.Drawing.Graphics]::FromImage($bmp)
+$global:g = $g
 $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
 $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
 $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
@@ -62,6 +63,9 @@ $subFont = New-Object System.Drawing.Font($googleSans, 12, [System.Drawing.FontS
 $badgeTitleFont = New-Object System.Drawing.Font($googleSans, 12, [System.Drawing.FontStyle]::Bold)
 $badgeDescFont = New-Object System.Drawing.Font($googleSans, 9.5, [System.Drawing.FontStyle]::Regular)
 $pillFont = New-Object System.Drawing.Font($googleSans, 10.5, [System.Drawing.FontStyle]::Bold)
+$global:badgeTitleFont = $badgeTitleFont
+$global:badgeDescFont = $badgeDescFont
+$global:pillFont = $pillFont
 
 # Eyebrow Pill com medicao dinamica (sem corte ou encostar nas bordas)
 $tagText = "GOOGLE GEMINI + WHATSAPP WEB"
@@ -170,10 +174,11 @@ DrawFeatureCard -x 40 -y 460 -w 240 -h 82 -bulletColor ([System.Drawing.Color]::
 # Cartao Lateral Direito (Seguranca e Features)
 DrawFeatureCard -x 1000 -y 230 -w 240 -h 82 -bulletColor ([System.Drawing.Color]::FromArgb(16, 185, 129)) -title "100% Privado (BYOK)" -descLine1 "Sem servidores intermediários." -descLine2 "Browser direto à Google." -borderColor ([System.Drawing.Color]::FromArgb(16, 185, 129))
 DrawFeatureCard -x 1000 -y 345 -w 240 -h 82 -bulletColor ([System.Drawing.Color]::FromArgb(6, 182, 212)) -title "Pool de Chaves" -descLine1 "Rotação inteligente de cotas" -descLine2 "para evitar erros 429." -borderColor ([System.Drawing.Color]::FromArgb(6, 182, 212))
-DrawFeatureCard -x 1000 -y 460 -w 240 -h 82 -bulletColor ([System.Drawing.Color]::FromArgb(168, 85, 247)) -title "Gemini 2.5 & 3.8" -descLine1 "Modelos multimodais" -descLine2 "ultra velozes e econômicos." -borderColor ([System.Drawing.Color]::FromArgb(168, 85, 247))
+DrawFeatureCard -x 1000 -y 460 -w 240 -h 82 -bulletColor ([System.Drawing.Color]::FromArgb(168, 85, 247)) -title "Google AI Studio" -descLine1 "Compatível com todos modelos" -descLine2 "de áudio do Google AI Studio." -borderColor ([System.Drawing.Color]::FromArgb(168, 85, 247))
 
 # 5. Barra Inferior com Destaques
 $pillY = 720
+$global:pillY = $pillY
 function DrawBottomPill {
     param($x, $w, $text, $accentColor)
     $bg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(17, 24, 39))
