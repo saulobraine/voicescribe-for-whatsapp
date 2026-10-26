@@ -1,6 +1,6 @@
 {
   "name": "voicescribe-for-whatsapp",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "VoiceScribe for WhatsApp™ - Transcreve mensagens de voz do WhatsApp Web usando a API Gemini do Google.",
   "type": "module",
   "scripts": {
