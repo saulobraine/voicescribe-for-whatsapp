@@ -77,8 +77,8 @@ O projeto foi totalmente construído em **TypeScript rigoroso**, seguindo a meto
 ### 1. Clonar e Instalar Dependências
 
 ```bash
-git clone -b typescript https://github.com/saulobraine/whatsapp-gemini-transcriber.git
-cd whatsapp-gemini-transcriber
+git clone -b develop https://github.com/saulobraine/voicescribe-for-whatsapp.git
+cd voicescribe-for-whatsapp
 npm install
 ```
 

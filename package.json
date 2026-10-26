@@ -1,7 +1,7 @@
 {
-  "name": "whatsapp-gemini-transcriber",
+  "name": "voicescribe-for-whatsapp",
   "version": "1.1.0",
-  "description": "Transcreve áudios do WhatsApp Web usando a API Gemini do Google.",
+  "description": "VoiceScribe for WhatsApp™ - Transcreve mensagens de voz do WhatsApp Web usando a API Gemini do Google.",
   "type": "module",
   "scripts": {
     "build": "node build.ts",
