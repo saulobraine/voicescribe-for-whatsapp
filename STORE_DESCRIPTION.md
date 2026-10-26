@@ -44,10 +44,11 @@ Criado com acabamento visual moderno e profissional, inspirado nas melhores inte
 • Suporte automático aos modos Claro (Light) e Escuro (Dark) do WhatsApp Web.
 • Efeitos de iluminação e bordas neon translúcidas que se integram perfeitamente à interface original do WhatsApp.
 
-⚙️ Compatibilidade com Todos os Modelos Gemini
-Escolha no popup qual modelo deseja utilizar:
-• Gemini 2.5 Flash / Gemini 3.8 Flash: ultra velozes, precisos e econômicos para mensagens diárias.
-• Gemini 2.5 Pro: precisão máxima para áudios longos, vocabulário técnico, termos jurídicos ou sotaques complexos.
+⚙️ Compatibilidade Total com Modelos de Áudio do Google AI Studio
+O VoiceScribe for WhatsApp™ suporta todos os modelos do Google AI Studio que aceitam entrada de áudio:
+• Detecção dinâmica em tempo real: clique no botão "Atualizar" no popup para carregar instantaneamente todos os modelos de áudio disponíveis na sua API.
+• Suporte amplo à família Gemini: utilize Gemini 1.5 Flash, Gemini 1.5 Pro, Gemini 2.0 Flash, Gemini 2.5 Flash, Gemini 2.5 Pro ou qualquer versão futura disponibilizada pela Google.
+• Escolha o perfil ideal: modelos Flash para transcrições ultrarrápidas do dia a dia, ou modelos Pro para áudios longos, termos técnicos, jargões jurídicos ou gravações com muito ruído de fundo.
 
 ---
 
@@ -86,8 +87,8 @@ Sim! O VoiceScribe for WhatsApp™ é um projeto de código aberto e 100% gratui
 2. A extensão lê todas as minhas mensagens ou conversas?
 Absolutamente não. A extensão só atua quando você clica deliberadamente no botão [Transcrever] de um áudio específico. Nenhuma mensagem de texto, foto, documento ou contato do seu WhatsApp é lido, acessado ou enviado para qualquer lugar.
 
-3. O que acontece se a Google alterar o modelo gratuito?
-O VoiceScribe possui um seletor inteligente que carrega os modelos disponíveis diretamente da API da Google em tempo real. Você pode alternar de modelo com um simples clique no popup da extensão.
+3. O que acontece se a Google lançar novos modelos ou alterar o catálogo?
+O VoiceScribe possui detecção dinâmica que se conecta à API do Google AI Studio e lista todos os modelos que suportam áudio. Basta abrir o popup, clicar em "Atualizar" e selecionar o novo modelo imediatamente, sem precisar esperar nenhuma atualização da extensão.
 
 4. Funciona em grupos e canais?
 Sim! O botão de transcrição aparece em mensagens de voz de qualquer chat individual, grupo ou comunidade.
