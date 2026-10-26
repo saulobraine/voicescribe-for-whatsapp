@@ -1,6 +1,6 @@
 Add-Type -AssemblyName System.Drawing
 
-$srcDrop = "C:\Users\admin\AppData\Local\Temp\Maestri-drops\6afdf1f3-af9e-4d0b-9fb7-ae8a57a2415d.png"
+$srcDrop = Join-Path $PSScriptRoot "..\store\Captura de tela_26-10-2026_0731_affaohcbcihedijbhndligbbpmcmfdle.jpeg"
 $logoPath = (Resolve-Path "$PSScriptRoot\..\icons\icon128.png").Path
 $outputDir = "$PSScriptRoot\..\store"
 
@@ -8,7 +8,7 @@ if (-not (Test-Path $outputDir)) {
     New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 }
 
-# Carregar a fonte oficial Google Sans via PrivateFontCollection
+# Carregar Google Sans oficial
 $pfc = New-Object System.Drawing.Text.PrivateFontCollection
 $pfc.AddFontFile((Resolve-Path "$PSScriptRoot\fonts\GoogleSans-Regular.ttf").Path)
 $pfc.AddFontFile((Resolve-Path "$PSScriptRoot\fonts\GoogleSans-Bold.ttf").Path)
@@ -19,7 +19,7 @@ if (-not $googleSans) { $googleSans = $pfc.Families[0] }
 $canvasWidth = 1280
 $canvasHeight = 800
 
-# Formato 24bppRgb sem canal alfa (requisito estrito da Chrome Web Store)
+# Formato 24bppRgb sem canal alfa
 $bmp = New-Object System.Drawing.Bitmap($canvasWidth, $canvasHeight, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
 $g = [System.Drawing.Graphics]::FromImage($bmp)
 $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
@@ -50,8 +50,8 @@ $glowBrush2.Dispose()
 # 2. Header & Branding
 $logoImg = [System.Drawing.Bitmap]::FromFile($logoPath)
 $logoSize = 72
-$logoX = 50
-$logoY = 36
+$logoX = 45
+$logoY = 32
 $g.DrawImage($logoImg, $logoX, $logoY, $logoSize, $logoSize)
 $logoImg.Dispose()
 
@@ -68,8 +68,8 @@ $tagText = "POOL INTELIGENTE & ROTAÇÃO DE CHAVES"
 $tagSize = $g.MeasureString($tagText, $tagFont)
 $tagBoxW = [int]($tagSize.Width + 20)
 $tagBoxH = 24
-$tagBoxX = 136
-$tagBoxY = 34
+$tagBoxX = 132
+$tagBoxY = 30
 
 $tagBg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(16, 50, 40))
 $tagBorder = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(16, 185, 129), 1)
@@ -83,60 +83,39 @@ $tagBg.Dispose(); $tagBorder.Dispose(); $tagTextBrush.Dispose()
 
 # Titulo Principal
 $titleBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
-$g.DrawString("Gerenciador de API Keys com Troca Automática", $titleFont, $titleBrush, 134, 60)
+$g.DrawString("Gerenciador de API Keys com Rotação Automática", $titleFont, $titleBrush, 130, 56)
 $titleBrush.Dispose()
 
 # Subtitulo
 $subBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(156, 163, 175))
-$g.DrawString("Cadastre múltiplas chaves gratuitas do Gemini. Rotação inteligente contra limites de requisições (erro 429).", $subFont, $subBrush, 136, 108)
+$g.DrawString("Cadastre múltiplas chaves gratuitas do Gemini. Alternância inteligente para contornar limites de cota (erro 429).", $subFont, $subBrush, 132, 104)
 $subBrush.Dispose()
 
-# 3. Card Central com o Print Real das Opcoes / Admin
-$screenshot = [System.Drawing.Bitmap]::FromFile($srcDrop)
-$shotW = $screenshot.Width
-$shotH = $screenshot.Height
+# 3. Card Central com o Print Real do Pool
+$fullImg = [System.Drawing.Bitmap]::FromFile($srcDrop)
+$cropRect = New-Object System.Drawing.Rectangle(630, 36, 1112, 730)
+$cardBmp = $fullImg.Clone($cropRect, $fullImg.PixelFormat)
+$fullImg.Dispose()
 
 # Moldura estilo janela de navegador dark
-$framePad = 10
-$headerH = 32
-$frameW = $shotW + ($framePad * 2)
-$frameTotalH = $shotH + ($framePad * 2) + $headerH
-$frameX = [int](($canvasWidth - $frameW) / 2)
-$frameY = 168
+$cardW = 868
+$cardH = 566
+$frameX = [int](($canvasWidth - $cardW) / 2)
+$frameY = 146
 
-# Sombra do Frame
+# Sombra suave do Card
 $shadowBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(2, 6, 12))
-$g.FillRectangle($shadowBrush, $frameX + 6, $frameY + 6, $frameW, $frameTotalH)
+$g.FillRectangle($shadowBrush, $frameX + 6, $frameY + 6, $cardW, $cardH)
 $shadowBrush.Dispose()
 
-# Fundo do Frame
-$frameBg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(17, 24, 39))
-$g.FillRectangle($frameBg, $frameX, $frameY, $frameW, $frameTotalH)
-$frameBg.Dispose()
+# Desenhar o Card no Canvas
+$g.DrawImage($cardBmp, $frameX, $frameY, $cardW, $cardH)
+$cardBmp.Dispose()
 
-# Borda neon suave no Frame
-$framePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(35, 65, 90), 1.5)
-$g.DrawRectangle($framePen, $frameX, $frameY, $frameW, $frameTotalH)
-$framePen.Dispose()
-
-# Janela Top bar (dots Mac/Chromium)
-$dotRed = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(239, 68, 68))
-$dotYellow = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(245, 158, 11))
-$dotGreen = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(16, 185, 129))
-$g.FillEllipse($dotRed, $frameX + 16, $frameY + 11, 10, 10)
-$g.FillEllipse($dotYellow, $frameX + 33, $frameY + 11, 10, 10)
-$g.FillEllipse($dotGreen, $frameX + 50, $frameY + 11, 10, 10)
-$dotRed.Dispose(); $dotYellow.Dispose(); $dotGreen.Dispose()
-
-# Titulo da janela
-$winTitleBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(148, 163, 184))
-$winTitleFont = New-Object System.Drawing.Font($googleSans, 9, [System.Drawing.FontStyle]::Regular)
-$g.DrawString("Gerenciar API Keys - VoiceScribe for WhatsApp™", $winTitleFont, $winTitleBrush, ($frameX + 72), ($frameY + 8))
-$winTitleBrush.Dispose(); $winTitleFont.Dispose()
-
-# Desenhar o Screenshot no Frame
-$g.DrawImage($screenshot, ($frameX + $framePad), ($frameY + $headerH + $framePad), $shotW, $shotH)
-$screenshot.Dispose()
+# Borda neon elegante ao redor do Card
+$cardPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(35, 65, 95), 1.5)
+$g.DrawRectangle($cardPen, $frameX, $frameY, $cardW, $cardH)
+$cardPen.Dispose()
 
 # 4. Badges Comerciais Laterais em Google Sans
 function DrawFeatureCard {
@@ -162,23 +141,23 @@ function DrawFeatureCard {
     $cardBg.Dispose(); $cardBorder.Dispose(); $titleBrush.Dispose(); $descBrush.Dispose()
 }
 
-$sideCardW = 166
+$sideCardW = 172
 $sideCardH = 78
 
 # Cartoes Laterais Esquerdos
-$leftX = 22
-DrawFeatureCard -x $leftX -y 230 -w $sideCardW -h $sideCardH -bulletColor ([System.Drawing.Color]::FromArgb(16, 185, 129)) -title "Multi-Chaves" -descLine1 "Cadastre quantas" -descLine2 "chaves desejar." -borderColor ([System.Drawing.Color]::FromArgb(16, 185, 129))
-DrawFeatureCard -x $leftX -y 340 -w $sideCardW -h $sideCardH -bulletColor ([System.Drawing.Color]::FromArgb(6, 182, 212)) -title "Zero Espera" -descLine1 "Rotação contínua" -descLine2 "sempre ativa." -borderColor ([System.Drawing.Color]::FromArgb(6, 182, 212))
-DrawFeatureCard -x $leftX -y 450 -w $sideCardW -h $sideCardH -bulletColor ([System.Drawing.Color]::FromArgb(59, 130, 246)) -title "Auto Cooldown" -descLine1 "Espera inteligente" -descLine2 "se houver erro 429." -borderColor ([System.Drawing.Color]::FromArgb(59, 130, 246))
+$leftX = 18
+DrawFeatureCard -x $leftX -y 220 -w $sideCardW -h $sideCardH -bulletColor ([System.Drawing.Color]::FromArgb(16, 185, 129)) -title "Multi-Chaves" -descLine1 "Cadastre quantas" -descLine2 "chaves desejar." -borderColor ([System.Drawing.Color]::FromArgb(16, 185, 129))
+DrawFeatureCard -x $leftX -y 330 -w $sideCardW -h $sideCardH -bulletColor ([System.Drawing.Color]::FromArgb(6, 182, 212)) -title "Zero Espera" -descLine1 "Rotação contínua" -descLine2 "sempre ativa." -borderColor ([System.Drawing.Color]::FromArgb(6, 182, 212))
+DrawFeatureCard -x $leftX -y 440 -w $sideCardW -h $sideCardH -bulletColor ([System.Drawing.Color]::FromArgb(59, 130, 246)) -title "Auto Cooldown" -descLine1 "Espera inteligente" -descLine2 "se houver erro 429." -borderColor ([System.Drawing.Color]::FromArgb(59, 130, 246))
 
 # Cartoes Laterais Direitos
-$rightX = 1092
-DrawFeatureCard -x $rightX -y 230 -w $sideCardW -h $sideCardH -bulletColor ([System.Drawing.Color]::FromArgb(16, 185, 129)) -title "100% Grátis" -descLine1 "Use o plano free" -descLine2 "do Google AI Studio." -borderColor ([System.Drawing.Color]::FromArgb(16, 185, 129))
-DrawFeatureCard -x $rightX -y 340 -w $sideCardW -h $sideCardH -bulletColor ([System.Drawing.Color]::FromArgb(6, 182, 212)) -title "Seguro Local" -descLine1 "Chaves salvas no" -descLine2 "seu navegador." -borderColor ([System.Drawing.Color]::FromArgb(6, 182, 212))
-DrawFeatureCard -x $rightX -y 450 -w $sideCardW -h $sideCardH -bulletColor ([System.Drawing.Color]::FromArgb(168, 85, 247)) -title "Resiliência" -descLine1 "Nunca perca um" -descLine2 "áudio longo." -borderColor ([System.Drawing.Color]::FromArgb(168, 85, 247))
+$rightX = 1090
+DrawFeatureCard -x $rightX -y 220 -w $sideCardW -h $sideCardH -bulletColor ([System.Drawing.Color]::FromArgb(16, 185, 129)) -title "100% Grátis" -descLine1 "Use o plano free" -descLine2 "do Google AI Studio." -borderColor ([System.Drawing.Color]::FromArgb(16, 185, 129))
+DrawFeatureCard -x $rightX -y 330 -w $sideCardW -h $sideCardH -bulletColor ([System.Drawing.Color]::FromArgb(6, 182, 212)) -title "Seguro Local" -descLine1 "Chaves salvas no" -descLine2 "seu navegador." -borderColor ([System.Drawing.Color]::FromArgb(6, 182, 212))
+DrawFeatureCard -x $rightX -y 440 -w $sideCardW -h $sideCardH -bulletColor ([System.Drawing.Color]::FromArgb(168, 85, 247)) -title "Resiliência" -descLine1 "Nunca perca um" -descLine2 "áudio longo." -borderColor ([System.Drawing.Color]::FromArgb(168, 85, 247))
 
 # 5. Barra Inferior com Destaques
-$pillY = 720
+$pillY = 728
 function DrawBottomPill {
     param($x, $w, $text, $accentColor)
     $bg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(17, 24, 39))
@@ -195,10 +174,10 @@ function DrawBottomPill {
     $bg.Dispose(); $pen.Dispose(); $txt.Dispose(); $checkBrush.Dispose()
 }
 
-DrawBottomPill -x 40 -w 280 -text "Detecção Automática Erro 429" -accentColor ([System.Drawing.Color]::FromArgb(16, 185, 129))
-DrawBottomPill -x 340 -w 280 -text "Monitor de Status por Chave" -accentColor ([System.Drawing.Color]::FromArgb(6, 182, 212))
-DrawBottomPill -x 640 -w 300 -text "Validação de Conectividade em 1 Clique" -accentColor ([System.Drawing.Color]::FromArgb(59, 130, 246))
-DrawBottomPill -x 960 -w 280 -text "BYOK - Chave Própria e Privada" -accentColor ([System.Drawing.Color]::FromArgb(168, 85, 247))
+DrawBottomPill -x 35 -w 280 -text "Detecção Automática Erro 429" -accentColor ([System.Drawing.Color]::FromArgb(16, 185, 129))
+DrawBottomPill -x 335 -w 280 -text "Monitor de Status por Chave" -accentColor ([System.Drawing.Color]::FromArgb(6, 182, 212))
+DrawBottomPill -x 635 -w 310 -text "Validação de Conectividade em 1 Clique" -accentColor ([System.Drawing.Color]::FromArgb(59, 130, 246))
+DrawBottomPill -x 965 -w 280 -text "BYOK - Chave Própria e Privada" -accentColor ([System.Drawing.Color]::FromArgb(168, 85, 247))
 
 # 6. Salvar Artefato exclusivamente em JPEG
 $jpgPath = Join-Path $outputDir "screenshot-2-1280x800.jpg"
