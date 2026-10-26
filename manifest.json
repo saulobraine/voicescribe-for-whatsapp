@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "WhatsApp Gemini Transcriber",
+  "name": "VoiceScribe for WhatsApp™",
   "version": "1.1.0",
   "description": "Transcreve áudios do WhatsApp Web usando sua própria chave da API Gemini.",
   "icons": {
@@ -19,7 +19,7 @@
     "https://generativelanguage.googleapis.com/*"
   ],
   "action": {
-    "default_title": "WhatsApp Gemini Transcriber",
+    "default_title": "VoiceScribe for WhatsApp™",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

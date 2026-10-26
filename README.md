@@ -1,7 +1,7 @@
-# 🎙️ WhatsApp Gemini Transcriber
+# 🎙️ VoiceScribe for WhatsApp™
 
 <p align="center">
-  <img src="icons/icon128.png" alt="WhatsApp Gemini Transcriber Logo" width="128"/>
+  <img src="icons/icon128.png" alt="VoiceScribe for WhatsApp™ Logo" width="128"/>
 </p>
 
 <p align="center">
@@ -204,6 +204,12 @@ Para habilitar a publicação automática, adicione as seguintes variáveis secr
 - **Armazenamento 100% Local:** Suas chaves de API e transcrições ficam guardadas exclusivamente no `chrome.storage.local` do seu navegador.
 - **Sem Servidores Intermediários:** As requisições de áudio vão diretamente do seu navegador aos endpoints HTTPS oficiais da Google (`generativelanguage.googleapis.com`).
 - **Nenhuma Coleta de Dados:** O código não possui telemetria, rastreadores ou chamadas para servidores de terceiros.
+
+---
+
+## ⚖️ Aviso Legal / Disclaimer
+
+*Aviso legal: WhatsApp é uma marca registrada da Meta Platforms, Inc. Google Gemini é uma marca registrada da Google LLC. VoiceScribe for WhatsApp™ é um projeto independente e não possui vínculo, patrocínio ou endosso da Meta Platforms ou da Google.*
 
 ---
 
