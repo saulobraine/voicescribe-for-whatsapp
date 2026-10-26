@@ -101,11 +101,11 @@ jobs:
       # Publicação automática no Microsoft Edge Add-ons
       - name: Upload para Microsoft Edge Add-ons
         if: env.EDGE_CLIENT_ID != ''
-        uses: wewatch/edge-addon-publish@v1.2.0
+        uses: wdzeng/edge-addon@v2
         with:
           product-id: ${{ secrets.EDGE_PRODUCT_ID }}
+          zip-path: whatsapp-gemini-transcriber.zip
           client-id: ${{ secrets.EDGE_CLIENT_ID }}
           api-key: ${{ secrets.EDGE_API_KEY }}
-          file-path: whatsapp-gemini-transcriber.zip
         env:
           EDGE_CLIENT_ID: ${{ secrets.EDGE_CLIENT_ID }}
