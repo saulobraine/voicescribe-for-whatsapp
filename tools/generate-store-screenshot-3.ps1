@@ -1,6 +1,6 @@
 Add-Type -AssemblyName System.Drawing
 
-$srcDrop = Join-Path $PSScriptRoot "..\store\Captura de tela 2026-10-26 000705.png"
+$srcDrop = Join-Path $PSScriptRoot "sources\source-ss3-popup.png"
 $logoPath = (Resolve-Path "$PSScriptRoot\..\icons\icon128.png").Path
 $outputDir = "$PSScriptRoot\..\store"
 
@@ -22,6 +22,7 @@ $canvasHeight = 800
 # Formato 24bppRgb sem canal alfa
 $bmp = New-Object System.Drawing.Bitmap($canvasWidth, $canvasHeight, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
 $g = [System.Drawing.Graphics]::FromImage($bmp)
+$global:g = $g
 $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
 $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
 $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
@@ -67,6 +68,9 @@ $subFont = New-Object System.Drawing.Font($googleSans, 12, [System.Drawing.FontS
 $badgeTitleFont = New-Object System.Drawing.Font($googleSans, 12, [System.Drawing.FontStyle]::Bold)
 $badgeDescFont = New-Object System.Drawing.Font($googleSans, 9.5, [System.Drawing.FontStyle]::Regular)
 $pillFont = New-Object System.Drawing.Font($googleSans, 10, [System.Drawing.FontStyle]::Bold)
+$global:badgeTitleFont = $badgeTitleFont
+$global:badgeDescFont = $badgeDescFont
+$global:pillFont = $pillFont
 
 # Eyebrow Pill com medicao dinamica
 $tagText = "CONFIGURAÇÃO SIMPLES & INTUITIVA"
@@ -88,12 +92,12 @@ $tagBg.Dispose(); $tagBorder.Dispose(); $tagTextBrush.Dispose()
 
 # Titulo Principal
 $titleBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
-$g.DrawString("Interface da Extensão & Modelos Gemini Multimodais", $titleFont, $titleBrush, 130, 56)
+$g.DrawString("Interface da Extensão & Modelos Google AI Studio", $titleFont, $titleBrush, 130, 56)
 $titleBrush.Dispose()
 
 # Subtitulo
 $subBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(156, 163, 175))
-$g.DrawString("Alterne entre modelos Gemini em tempo real, teste sua conexão em 1 clique e zere o cache com facilidade.", $subFont, $subBrush, 132, 104)
+$g.DrawString("Compatível com todos os modelos de áudio do Google AI Studio. Teste conexão e limpe cache em 1 clique.", $subFont, $subBrush, 132, 104)
 $subBrush.Dispose()
 
 # 3. Card Central com o Print Real do Popup
@@ -146,7 +150,7 @@ $sideCardH = 88
 
 # Cartoes Laterais Esquerdos
 $leftX = 35
-DrawFeatureCard -x $leftX -y 250 -w $sideCardW -h $sideCardH -bulletColor ([System.Drawing.Color]::FromArgb(16, 185, 129)) -title "Seleção de Modelos IA" -descLine1 "Escolha entre Gemini 2.5 Flash," -descLine2 "3.8 Flash ou 2.5 Pro em tempo real." -borderColor ([System.Drawing.Color]::FromArgb(16, 185, 129))
+DrawFeatureCard -x $leftX -y 250 -w $sideCardW -h $sideCardH -bulletColor ([System.Drawing.Color]::FromArgb(16, 185, 129)) -title "Google AI Studio" -descLine1 "Compatível com todos os modelos" -descLine2 "de áudio do Google AI Studio." -borderColor ([System.Drawing.Color]::FromArgb(16, 185, 129))
 DrawFeatureCard -x $leftX -y 390 -w $sideCardW -h $sideCardH -bulletColor ([System.Drawing.Color]::FromArgb(6, 182, 212)) -title "Validador de Conexão" -descLine1 "O botão Testar valida sua API" -descLine2 "e chave direto com a Google na hora." -borderColor ([System.Drawing.Color]::FromArgb(6, 182, 212))
 
 # Cartoes Laterais Direitos
@@ -156,6 +160,7 @@ DrawFeatureCard -x $rightX -y 390 -w $sideCardW -h $sideCardH -bulletColor ([Sys
 
 # 5. Barra Inferior com Destaques
 $pillY = 728
+$global:pillY = $pillY
 function DrawBottomPill {
     param($x, $w, $text, $accentColor)
     $bg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(17, 24, 39))
@@ -173,7 +178,7 @@ function DrawBottomPill {
 }
 
 DrawBottomPill -x 35 -w 280 -text "Teste de Chave em 1 Clique" -accentColor ([System.Drawing.Color]::FromArgb(16, 185, 129))
-DrawBottomPill -x 335 -w 280 -text "Modelos Multimodais Oficiais" -accentColor ([System.Drawing.Color]::FromArgb(6, 182, 212))
+DrawBottomPill -x 335 -w 280 -text "Todos Modelos Google AI Studio" -accentColor ([System.Drawing.Color]::FromArgb(6, 182, 212))
 DrawBottomPill -x 635 -w 310 -text "Armazenamento 100% no Navegador" -accentColor ([System.Drawing.Color]::FromArgb(59, 130, 246))
 DrawBottomPill -x 965 -w 280 -text "Zero Configuração Complexa" -accentColor ([System.Drawing.Color]::FromArgb(168, 85, 247))
 

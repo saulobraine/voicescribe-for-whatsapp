@@ -1,6 +1,6 @@
 Add-Type -AssemblyName System.Drawing
 
-$srcDrop = "C:\Users\admin\AppData\Local\Temp\Maestri-drops\5b92b5b4-4630-45da-8c64-5b861fa0e22a.png"
+$srcDrop = Join-Path $PSScriptRoot "sources\source-ss1-chat.png"
 $logoPath = (Resolve-Path "$PSScriptRoot\..\icons\icon128.png").Path
 $outputDir = "$PSScriptRoot\..\store"
 
@@ -15,6 +15,7 @@ $pfc.AddFontFile((Resolve-Path "$PSScriptRoot\fonts\GoogleSans-Bold.ttf").Path)
 $pfc.AddFontFile((Resolve-Path "$PSScriptRoot\fonts\GoogleSans-Medium.ttf").Path)
 $googleSans = $pfc.Families | Where-Object { $_.Name -eq "Google Sans" } | Select-Object -First 1
 if (-not $googleSans) { $googleSans = $pfc.Families[0] }
+$global:googleSans = $googleSans
 
 $jpgEncoder = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.FormatDescription -eq "JPEG" }
 $encoderParams = New-Object System.Drawing.Imaging.EncoderParameters(1)
@@ -27,6 +28,7 @@ $w1 = 440
 $h1 = 280
 $bmp1 = New-Object System.Drawing.Bitmap($w1, $h1, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
 $g1 = [System.Drawing.Graphics]::FromImage($bmp1)
+$global:g1 = $g1
 $g1.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
 $g1.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
 $g1.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
@@ -124,6 +126,7 @@ $w2 = 1400
 $h2 = 560
 $bmp2 = New-Object System.Drawing.Bitmap($w2, $h2, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
 $g2 = [System.Drawing.Graphics]::FromImage($bmp2)
+$global:g2 = $g2
 $g2.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
 $g2.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
 $g2.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
