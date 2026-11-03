@@ -122,7 +122,7 @@ export class GeminiApiClient {
 
       const text = this.extractInteractionText(result.json);
       if (text.length === 0) {
-        console.error('[WGT] Resposta da API Interactions:', result.json);
+        console.error('[VS] Resposta da API Interactions:', result.json);
         throw new Error('O Gemini Transcribe não retornou uma transcrição.');
       }
 

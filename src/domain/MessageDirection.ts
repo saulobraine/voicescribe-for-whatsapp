@@ -24,13 +24,13 @@ export class MessageDirection {
 
   public toCssClass(): string {
     if (this.isOutgoing()) {
-      return 'wgt-out';
+      return 'vs-out';
     }
-    return 'wgt-in';
+    return 'vs-in';
   }
 
   public applyToContainer(containerElement: HTMLElement): void {
-    containerElement.classList.remove('wgt-in', 'wgt-out');
+    containerElement.classList.remove('vs-in', 'vs-out');
     containerElement.classList.add(this.toCssClass());
   }
 }

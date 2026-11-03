@@ -58,7 +58,7 @@ export class ApiKeyPool {
     }
 
     const newRecord: StoredApiKeyRecord = {
-      id: `wgt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+      id: `vs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
       key: validatedKey.toRawString(),
       active: true,
       status: 'available',

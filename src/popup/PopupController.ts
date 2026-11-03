@@ -7,6 +7,7 @@ export class PopupController {
 
   private modelSelect: HTMLSelectElement | null = null;
   private statusElement: HTMLElement | null = null;
+  private autoTranscribeToggle: HTMLButtonElement | null = null;
 
   constructor(storage: ChromeStorageGateway = new ChromeStorageGateway()) {
     this.storage = storage;
@@ -15,14 +16,23 @@ export class PopupController {
   public async initialize(): Promise<void> {
     this.modelSelect = document.getElementById('model') as HTMLSelectElement;
     this.statusElement = document.getElementById('status');
+    this.autoTranscribeToggle = document.getElementById('auto-transcribe-toggle') as HTMLButtonElement | null;
 
     this.bindEvents();
+    this.listenStorageChanges();
+
+    const isAutoEnabled = await this.storage.isAutoTranscribeEnabled();
+    this.updateAutoTranscribeToggleUi(isAutoEnabled);
 
     const selectedModel = await this.storage.getSelectedModel();
     await this.loadModels(selectedModel, false);
   }
 
   private bindEvents(): void {
+    this.autoTranscribeToggle?.addEventListener('click', () => {
+      void this.handleAutoTranscribeToggle();
+    });
+
     document.getElementById('refresh')?.addEventListener('click', async () => {
       const current = this.modelSelect?.value || PopupController.DEFAULT_MODEL;
       await this.loadModels(current, true);
@@ -40,6 +50,33 @@ export class PopupController {
 
     document.getElementById('clear-cache')?.addEventListener('click', () => {
       void this.clearCache();
+    });
+  }
+
+  private async handleAutoTranscribeToggle(): Promise<void> {
+    const currentState = this.autoTranscribeToggle?.classList.contains('active') ?? false;
+    const newState = !currentState;
+    this.updateAutoTranscribeToggleUi(newState);
+    await this.storage.setAutoTranscribeEnabled(newState);
+    const feedback = newState
+      ? 'Transcrição automática ativada.'
+      : 'Transcrição automática desativada.';
+    this.setStatus(feedback, false);
+  }
+
+  private updateAutoTranscribeToggleUi(enabled: boolean): void {
+    if (!this.autoTranscribeToggle) {
+      return;
+    }
+    this.autoTranscribeToggle.className = `toggle ${enabled ? 'active' : 'inactive'}`;
+    this.autoTranscribeToggle.setAttribute('aria-checked', String(enabled));
+  }
+
+  private listenStorageChanges(): void {
+    chrome.storage?.onChanged?.addListener((changes, area) => {
+      if (area === 'local' && changes.auto_transcribe_enabled) {
+        this.updateAutoTranscribeToggleUi(Boolean(changes.auto_transcribe_enabled.newValue));
+      }
     });
   }
 

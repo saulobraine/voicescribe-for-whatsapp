@@ -50,7 +50,7 @@ test('MessageDirectionDetector deve identificar tail-out como outgoing', () => {
   const element = createMockElement({ hasTailOut: true });
   const direction = detector.detect(element);
   assert.equal(direction.isOutgoing(), true);
-  assert.equal(direction.toCssClass(), 'wgt-out');
+  assert.equal(direction.toCssClass(), 'vs-out');
 });
 
 test('MessageDirectionDetector deve identificar tail-in como incoming', () => {
@@ -58,7 +58,7 @@ test('MessageDirectionDetector deve identificar tail-in como incoming', () => {
   const element = createMockElement({ hasTailIn: true });
   const direction = detector.detect(element);
   assert.equal(direction.isOutgoing(), false);
-  assert.equal(direction.toCssClass(), 'wgt-in');
+  assert.equal(direction.toCssClass(), 'vs-in');
 });
 
 test('MessageDirectionDetector deve identificar Você: como outgoing', () => {
@@ -80,5 +80,5 @@ test('MessageDirectionDetector deve retornar incoming por padrão em mensagens c
   const element = createMockElement({});
   const direction = detector.detect(element);
   assert.equal(direction.isOutgoing(), false);
-  assert.equal(direction.toCssClass(), 'wgt-in');
+  assert.equal(direction.toCssClass(), 'vs-in');
 });

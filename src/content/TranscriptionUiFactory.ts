@@ -1,10 +1,10 @@
 import { MessageDirectionDetector } from './MessageDirectionDetector.js';
 
 export class TranscriptionUiFactory {
-  private static readonly BUTTON_CLASS = 'wgt-transcribe-button';
-  private static readonly CONTAINER_CLASS = 'wgt-container';
-  private static readonly BUBBLE_CLASS = 'wgt-bubble';
-  private static readonly STYLE_ID = 'wgt-styles';
+  private static readonly BUTTON_CLASS = 'vs-transcribe-button';
+  private static readonly CONTAINER_CLASS = 'vs-container';
+  private static readonly BUBBLE_CLASS = 'vs-bubble';
+  private static readonly STYLE_ID = 'vs-styles';
 
   private readonly directionDetector: MessageDirectionDetector;
 
@@ -106,7 +106,7 @@ export class TranscriptionUiFactory {
     const styleElement = document.createElement('style');
     styleElement.id = TranscriptionUiFactory.STYLE_ID;
     styleElement.textContent = `
-      .wgt-container {
+      .vs-container {
         display: flex !important;
         flex-direction: column !important;
         box-sizing: border-box !important;
@@ -117,17 +117,17 @@ export class TranscriptionUiFactory {
         max-width: 100% !important;
         z-index: 10 !important;
       }
-      .wgt-container.wgt-in {
+      .vs-container.vs-in {
         align-self: flex-start !important;
         align-items: flex-start !important;
         text-align: left !important;
       }
-      .wgt-container.wgt-out {
+      .vs-container.vs-out {
         align-self: flex-end !important;
         align-items: flex-end !important;
         text-align: right !important;
       }
-      .wgt-transcribe-button {
+      .vs-transcribe-button {
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
@@ -144,20 +144,20 @@ export class TranscriptionUiFactory {
         box-shadow: 0 2px 8px rgba(6, 182, 212, 0.35) !important;
         transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
       }
-      .wgt-transcribe-button:hover {
+      .vs-transcribe-button:hover {
         transform: translateY(-1px) !important;
         box-shadow: 0 4px 14px rgba(6, 182, 212, 0.5) !important;
         filter: brightness(1.08) !important;
       }
-      .wgt-transcribe-button:active {
+      .vs-transcribe-button:active {
         transform: translateY(0) !important;
       }
-      .wgt-transcribe-button:disabled {
+      .vs-transcribe-button:disabled {
         opacity: 0.65 !important;
         cursor: wait !important;
         transform: none !important;
       }
-      .wgt-bubble {
+      .vs-bubble {
         position: relative !important;
         margin: 5px 0 !important;
         padding: 11px 15px !important;
@@ -174,26 +174,26 @@ export class TranscriptionUiFactory {
         text-align: left !important;
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
       }
-      .wgt-container.wgt-out .wgt-bubble {
+      .vs-container.vs-out .vs-bubble {
         background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(6, 182, 212, 0.12) 100%) !important;
         border-color: rgba(16, 185, 129, 0.35) !important;
         color: #064e3b !important;
       }
-      .dark .wgt-container.wgt-in .wgt-bubble,
-      [data-theme="dark"] .wgt-container.wgt-in .wgt-bubble {
+      .dark .vs-container.vs-in .vs-bubble,
+      [data-theme="dark"] .vs-container.vs-in .vs-bubble {
         background: #0f172a !important;
         color: #f1f5f9 !important;
         border-color: rgba(6, 182, 212, 0.3) !important;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
       }
-      .dark .wgt-container.wgt-out .wgt-bubble,
-      [data-theme="dark"] .wgt-container.wgt-out .wgt-bubble {
+      .dark .vs-container.vs-out .vs-bubble,
+      [data-theme="dark"] .vs-container.vs-out .vs-bubble {
         background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(6, 182, 212, 0.2) 100%) !important;
         color: #f1f5f9 !important;
         border-color: rgba(16, 185, 129, 0.45) !important;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
       }
-      .wgt-close {
+      .vs-close {
         position: absolute !important;
         right: 8px !important;
         top: 8px !important;
@@ -210,13 +210,13 @@ export class TranscriptionUiFactory {
         border-radius: 4px !important;
         transition: color 0.15s ease !important;
       }
-      .wgt-close:hover,
-      .dark .wgt-close:hover,
-      [data-theme="dark"] .wgt-close:hover {
+      .vs-close:hover,
+      .dark .vs-close:hover,
+      [data-theme="dark"] .vs-close:hover {
         color: #ef4444 !important;
         background: rgba(239, 68, 68, 0.1) !important;
       }
-      .wgt-copy {
+      .vs-copy {
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
@@ -230,13 +230,13 @@ export class TranscriptionUiFactory {
         cursor: pointer !important;
         transition: all 0.15s ease !important;
       }
-      .wgt-copy:hover {
+      .vs-copy:hover {
         background: linear-gradient(135deg, rgba(16, 185, 129, 0.22) 0%, rgba(6, 182, 212, 0.22) 100%) !important;
         border-color: rgba(6, 182, 212, 0.6) !important;
         transform: translateY(-1px) !important;
       }
-      .dark .wgt-copy,
-      [data-theme="dark"] .wgt-copy {
+      .dark .vs-copy,
+      [data-theme="dark"] .vs-copy {
         background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(6, 182, 212, 0.2) 100%) !important;
         border-color: rgba(6, 182, 212, 0.45) !important;
         color: #38bdf8 !important;
@@ -247,7 +247,7 @@ export class TranscriptionUiFactory {
 
   private createCopyButton(textToCopy: string): HTMLButtonElement {
     const copyButton = document.createElement('button');
-    copyButton.className = 'wgt-copy';
+    copyButton.className = 'vs-copy';
     copyButton.type = 'button';
     copyButton.textContent = 'Copiar';
     copyButton.addEventListener('click', async () => {
@@ -264,7 +264,7 @@ export class TranscriptionUiFactory {
 
   private createCloseButton(onClose: () => void): HTMLButtonElement {
     const closeButton = document.createElement('button');
-    closeButton.className = 'wgt-close';
+    closeButton.className = 'vs-close';
     closeButton.type = 'button';
     closeButton.textContent = '×';
     closeButton.title = 'Fechar';

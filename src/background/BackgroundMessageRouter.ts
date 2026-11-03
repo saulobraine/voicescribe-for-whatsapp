@@ -21,14 +21,29 @@ export class BackgroundMessageRouter {
 
   public register(): void {
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-      this.routeMessage(message)
-        .then((response) => sendResponse(response))
-        .catch((error: unknown) => {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          sendResponse({ success: false, error: errorMessage });
-        });
+      this.handleIncomingMessage(message, sendResponse);
       return true;
     });
+  }
+
+  private handleIncomingMessage(message: any, sendResponse: (response?: any) => void): void {
+    Promise.resolve()
+      .then(() => this.routeMessage(message))
+      .then((response) => {
+        this.safeSendResponse(sendResponse, response);
+      })
+      .catch((error: unknown) => {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.safeSendResponse(sendResponse, { success: false, error: errorMessage });
+      });
+  }
+
+  private safeSendResponse(sendResponse: (response?: any) => void, response: any): void {
+    try {
+      sendResponse(response);
+    } catch {
+      // Ignora caso a porta tenha sido fechada
+    }
   }
 
   private async routeMessage(message: any): Promise<any> {

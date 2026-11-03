@@ -10,10 +10,19 @@ export class WhatsAppAudioCapturer {
   }
 
   public async captureAudioDataUrl(messageElement: HTMLElement, targetElement?: HTMLElement): Promise<string> {
+    if (typeof messageElement.querySelector === 'function' && messageElement.querySelector('video')) {
+      throw new Error('Mensagens de vídeo não são elegíveis para transcrição.');
+    }
+
+    const memoryDataUrl = await this.tryRequestFromPageCache(messageElement);
+    if (memoryDataUrl) {
+      return memoryDataUrl;
+    }
+
     const existingMedia = this.findMediaElement(messageElement, targetElement);
     const existingUrl = existingMedia?.currentSrc || existingMedia?.src || null;
 
-    if (existingUrl) {
+    if (existingUrl && this.isSafeLocalBlobUrl(existingUrl)) {
       const directDataUrl = await this.tryFetchOrRequestFromPage(existingUrl);
       if (directDataUrl) {
         return directDataUrl;
@@ -23,30 +32,67 @@ export class WhatsAppAudioCapturer {
     return this.captureViaSilentPlayback(messageElement, existingMedia);
   }
 
+  private isSafeLocalBlobUrl(url?: string | null): boolean {
+    if (!url || typeof url !== 'string') {
+      return false;
+    }
+    if (!url.startsWith('blob:')) {
+      return false;
+    }
+    const lower = url.toLowerCase();
+    return !lower.includes('.enc') && !lower.includes('whatsapp.net');
+  }
+
+  private async tryRequestFromPageCache(messageElement: HTMLElement): Promise<string | null> {
+    const messageId = this.extractMessageId(messageElement);
+    const filehash = this.extractFilehash(messageElement);
+    if (!messageId && !filehash) {
+      return null;
+    }
+    try {
+      return await this.requestAudioFromPage(null, undefined, messageId, filehash || undefined);
+    } catch {
+      return null;
+    }
+  }
+
+  private extractMessageId(messageElement: HTMLElement): string {
+    return (
+      messageElement.getAttribute('data-id') ||
+      messageElement.dataset.id ||
+      messageElement.getAttribute('data-testid')?.replace(/^conv-msg-/, '') ||
+      ''
+    );
+  }
+
+  private extractFilehash(messageElement: HTMLElement): string | null {
+    return (
+      messageElement.getAttribute('data-filehash') ||
+      messageElement.dataset.filehash ||
+      null
+    );
+  }
+
   public findMediaElement(messageElement: HTMLElement, targetElement?: HTMLElement): HTMLMediaElement | null {
-    if (targetElement && (targetElement instanceof HTMLAudioElement || targetElement instanceof HTMLVideoElement)) {
+    if (targetElement instanceof HTMLAudioElement) {
       return targetElement;
     }
-    const mediaElements = Array.from(messageElement.querySelectorAll<HTMLMediaElement>('audio, video'));
-    const mediaWithSource = mediaElements.find((element) => element.currentSrc || element.src);
-    if (mediaWithSource) {
-      return mediaWithSource;
+    const audioElements = Array.from(messageElement.querySelectorAll<HTMLAudioElement>('audio'));
+    const audioWithSource = audioElements.find((element) => element.currentSrc || element.src);
+    if (audioWithSource) {
+      return audioWithSource;
     }
-    return mediaElements[0] || null;
+    return audioElements[0] || null;
   }
 
   private async tryFetchOrRequestFromPage(url: string): Promise<string | null> {
-    if (!url.startsWith('blob:')) {
-      try {
-        return await this.fetchAsDataUrl(url);
-      } catch {
-        // Fallback para requisição no contexto da página
-      }
+    if (!this.isSafeLocalBlobUrl(url)) {
+      return null;
     }
     try {
-      return await this.requestAudioFromPage(url);
+      return await this.fetchAsDataUrl(url);
     } catch {
-      return null;
+      return this.requestAudioFromPage(url);
     }
   }
 
@@ -64,9 +110,11 @@ export class WhatsAppAudioCapturer {
       }
     };
 
+    window.addEventListener('vs-audio', audioListener as EventListener);
     window.addEventListener('wgt-audio', audioListener as EventListener);
 
     try {
+      window.dispatchEvent(new CustomEvent('vs-silent-capture-start'));
       window.dispatchEvent(new CustomEvent('wgt-silent-capture-start'));
       this.muteInitialMedia(mediaElement);
       this.triggerPlay(messageElement);
@@ -83,6 +131,7 @@ export class WhatsAppAudioCapturer {
 
       throw new Error('Não consegui obter o arquivo de áudio. Reproduza a mensagem e tente novamente.');
     } finally {
+      window.removeEventListener('vs-audio', audioListener as EventListener);
       window.removeEventListener('wgt-audio', audioListener as EventListener);
       await this.cleanupSilentPlayback(messageElement, mediaElement);
     }
@@ -187,12 +236,13 @@ export class WhatsAppAudioCapturer {
       } catch {}
     }
 
+    window.dispatchEvent(new CustomEvent('vs-silent-capture-stop'));
     window.dispatchEvent(new CustomEvent('wgt-silent-capture-stop'));
     this.restoreDocumentMediaVolume();
   }
 
   private restoreDocumentMediaVolume(): void {
-    const elements = document.querySelectorAll<HTMLMediaElement>('audio, video');
+    const elements = document.querySelectorAll<HTMLAudioElement>('audio');
     elements.forEach((element) => {
       try {
         element.muted = false;
@@ -217,7 +267,7 @@ export class WhatsAppAudioCapturer {
     );
     if (playerWrapper) {
       const wrapperBtn = playerWrapper.querySelector<HTMLElement>(
-        'button:not(.wgt-transcribe-button):not(.wgt-copy):not(.wgt-close)'
+        'button:not(.vs-transcribe-button):not(.vs-copy):not(.vs-close):not(.wgt-transcribe-button):not(.wgt-copy):not(.wgt-close)'
       );
       if (wrapperBtn) {
         return wrapperBtn;
@@ -225,7 +275,7 @@ export class WhatsAppAudioCapturer {
     }
 
     const allButtons = messageElement.querySelectorAll<HTMLElement>(
-      'button:not(.wgt-transcribe-button):not(.wgt-copy):not(.wgt-close)'
+      'button:not(.vs-transcribe-button):not(.vs-copy):not(.vs-close):not(.wgt-transcribe-button):not(.wgt-copy):not(.wgt-close)'
     );
     for (const button of allButtons) {
       if (button.querySelector('[data-icon*="play"], svg')) {
@@ -249,11 +299,19 @@ export class WhatsAppAudioCapturer {
     return null;
   }
 
-  private async requestAudioFromPage(url: string | null, minTimestamp?: number): Promise<string> {
+  private async requestAudioFromPage(
+    url: string | null,
+    minTimestamp?: number,
+    messageId?: string,
+    filehash?: string
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
-      const requestId = `wgt_${Math.random().toString(36).slice(2, 9)}`;
+      const requestId = `vs_${Math.random().toString(36).slice(2, 9)}`;
       const timer = setTimeout(() => {
+        window.removeEventListener('vs-response-audio', handler as EventListener);
+        window.removeEventListener('vs-audio-response', handler as EventListener);
         window.removeEventListener('wgt-response-audio', handler as EventListener);
+        window.removeEventListener('wgt-audio-response', handler as EventListener);
         reject(new Error('Tempo limite excedido ao capturar o áudio da página.'));
       }, this.timeoutMilliseconds);
 
@@ -262,7 +320,10 @@ export class WhatsAppAudioCapturer {
         if (detail.requestId !== requestId) {
           return;
         }
+        window.removeEventListener('vs-response-audio', handler as EventListener);
+        window.removeEventListener('vs-audio-response', handler as EventListener);
         window.removeEventListener('wgt-response-audio', handler as EventListener);
+        window.removeEventListener('wgt-audio-response', handler as EventListener);
         clearTimeout(timer);
 
         if (detail.error) {
@@ -276,16 +337,27 @@ export class WhatsAppAudioCapturer {
         reject(new Error('Áudio vazio retornado pela página.'));
       };
 
+      window.addEventListener('vs-response-audio', handler as EventListener);
+      window.addEventListener('vs-audio-response', handler as EventListener);
       window.addEventListener('wgt-response-audio', handler as EventListener);
+      window.addEventListener('wgt-audio-response', handler as EventListener);
+      window.dispatchEvent(
+        new CustomEvent('vs-request-audio', {
+          detail: { requestId, url, minTimestamp, messageId, filehash },
+        })
+      );
       window.dispatchEvent(
         new CustomEvent('wgt-request-audio', {
-          detail: { requestId, url, minTimestamp },
+          detail: { requestId, url, minTimestamp, messageId, filehash },
         })
       );
     });
   }
 
   private async fetchAsDataUrl(url: string): Promise<string> {
+    if (!this.isSafeLocalBlobUrl(url)) {
+      throw new Error('Bloqueado download de URL externa criptografada ou não-blob.');
+    }
     const response = await fetch(url, { credentials: 'include', cache: 'no-store' });
     if (!response.ok) {
       throw new Error(`Não foi possível baixar o áudio (${response.status}).`);

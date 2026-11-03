@@ -22,7 +22,7 @@ Single flat directory. No build step, no package.json.
 
 ## Key Architectural Notes
 
-- **Isolated world boundary**: `content.js` runs in the content script's isolated world and cannot see `fetch`/`XMLHttpRequest` calls made by WhatsApp's page scripts. `interceptor.js` is injected as a `<script>` tag (web-accessible resource) so it runs in the **page context**, where it can intercept those calls and re-broadcast them to `content.js` via a `CustomEvent('wgt-audio')`.
+- **Isolated world boundary**: `content.js` runs in the content script's isolated world and cannot see `fetch`/`XMLHttpRequest` calls made by WhatsApp's page scripts. `interceptor.js` is injected as a `<script>` tag (web-accessible resource) so it runs in the **page context**, where it can intercept those calls and re-broadcast them to `content.js` via a `CustomEvent('vs-audio')`.
 
 - **Service worker lifecycle**: `background.js` is an MV3 service worker. It wakes on message, does its async work, responds, and shuts down. `chrome.runtime.sendMessage` from `content.js` uses the callback form (with `return true` for async response).
 

@@ -1,25 +1,84 @@
 import { TranscriptionUiFactory } from './TranscriptionUiFactory.js';
 import { WhatsAppAudioCapturer } from './WhatsAppAudioCapturer.js';
 import { ChromeStorageGateway } from '../infrastructure/ChromeStorageGateway.js';
+import { AutoTranscribeQueue, AutoTranscribeTask } from './AutoTranscribeQueue.js';
+import { MessageAgeValidator } from './MessageAgeValidator.js';
+
+interface PendingObservedMessage {
+  targetElement: HTMLElement;
+  button: HTMLButtonElement;
+  container?: HTMLElement;
+}
 
 export class WhatsAppMessageScanner {
   private readonly uiFactory: TranscriptionUiFactory;
   private readonly audioCapturer: WhatsAppAudioCapturer;
   private readonly storage: ChromeStorageGateway;
+  private readonly autoTranscribeQueue: AutoTranscribeQueue;
+  private readonly ageValidator: MessageAgeValidator;
+  private readonly visibilityObserver: IntersectionObserver | null;
+  private readonly pendingObservedMessages = new Map<HTMLElement, PendingObservedMessage>();
 
   constructor(
     uiFactory: TranscriptionUiFactory = new TranscriptionUiFactory(),
     audioCapturer: WhatsAppAudioCapturer = new WhatsAppAudioCapturer(),
-    storage: ChromeStorageGateway = new ChromeStorageGateway()
+    storage: ChromeStorageGateway = new ChromeStorageGateway(),
+    autoTranscribeQueue?: AutoTranscribeQueue,
+    ageValidator: MessageAgeValidator = new MessageAgeValidator(),
+    visibilityObserver?: IntersectionObserver | null
   ) {
     this.uiFactory = uiFactory;
     this.audioCapturer = audioCapturer;
     this.storage = storage;
+    this.ageValidator = ageValidator;
+    this.autoTranscribeQueue =
+      autoTranscribeQueue ||
+      new AutoTranscribeQueue(this.storage, (task) => this.executeAutoTranscription(task));
+    this.visibilityObserver =
+      visibilityObserver !== undefined ? visibilityObserver : this.createVisibilityObserver();
+  }
+
+  private createVisibilityObserver(): IntersectionObserver | null {
+    if (typeof IntersectionObserver === 'undefined') {
+      return null;
+    }
+    return new IntersectionObserver((entries) => {
+      this.handleVisibilityEntries(entries);
+    }, {
+      root: null,
+      threshold: 0.1,
+    });
+  }
+
+  private handleVisibilityEntries(entries: IntersectionObserverEntry[]): void {
+    entries.forEach((entry) => {
+      this.handleVisibilityEntry(entry);
+    });
+  }
+
+  private handleVisibilityEntry(entry: IntersectionObserverEntry): void {
+    if (!entry.isIntersecting) {
+      return;
+    }
+    const messageElement = entry.target as HTMLElement;
+    this.visibilityObserver?.unobserve(messageElement);
+    const pending = this.pendingObservedMessages.get(messageElement);
+    this.pendingObservedMessages.delete(messageElement);
+    if (!pending) {
+      return;
+    }
+    this.enqueueIfAutoTranscribeEligible(
+      messageElement,
+      pending.targetElement,
+      pending.button,
+      pending.container
+    );
   }
 
   public start(): void {
     this.uiFactory.injectStyles();
     this.injectNetworkInterceptor();
+    void this.initAutoTranscribe();
     this.scan();
     this.observeMutations();
     this.observeScroll();
@@ -27,11 +86,26 @@ export class WhatsAppMessageScanner {
     this.listenStorageChanges();
   }
 
+  private async initAutoTranscribe(): Promise<void> {
+    if (!this.isContextValid()) {
+      return;
+    }
+    try {
+      const isAuto = await this.storage.isAutoTranscribeEnabled();
+      this.autoTranscribeQueue.setEnabled(isAuto);
+      if (isAuto) {
+        this.scan();
+      }
+    } catch {
+      // Silencia erros se o contexto da extensão foi invalidado
+    }
+  }
+
   public scan(): void {
     this.updateExistingContainers();
 
     const candidates = document.querySelectorAll<HTMLElement>(
-      'audio, video, ' +
+      'audio, ' +
       '[data-testid*="audio"], [data-testid*="ptt"], [data-testid*="voice"], ' +
       '[data-icon*="audio-play"], [data-icon*="ptt"], span.ptt-status, ' +
       'button[aria-label*="Reproduzir" i], button[aria-label*="Play" i], ' +
@@ -42,30 +116,124 @@ export class WhatsAppMessageScanner {
     const processedMessages = new Set<HTMLElement>();
     for (const candidate of candidates) {
       const message = this.findMessageContainer(candidate);
-      if (!message || processedMessages.has(message) || message.querySelector('.wgt-transcribe-button')) {
+      if (!message || processedMessages.has(message) || this.isVideoMessage(message, candidate)) {
         continue;
       }
       processedMessages.add(message);
+
+      const existingButton = message.querySelector<HTMLButtonElement>('.vs-transcribe-button, .wgt-transcribe-button');
+      if (existingButton) {
+        this.queueOrObserveMessage(message, candidate, existingButton);
+        continue;
+      }
       this.attachTranscribeButton(message, candidate);
     }
   }
 
   private updateExistingContainers(): void {
-    const containers = document.querySelectorAll<HTMLElement>('.wgt-container');
+    const containers = document.querySelectorAll<HTMLElement>('.vs-container, .wgt-container');
     containers.forEach((container) => {
       const message = this.findMessageContainer(container);
-      if (!message) {
+      if (!message || this.isVideoMessage(message)) {
+        if (message && this.isVideoMessage(message)) {
+          container.remove();
+        }
         return;
       }
       this.uiFactory.getOrCreateContainer(message);
     });
   }
 
+  private isVideoMessage(message: HTMLElement, candidate?: HTMLElement): boolean {
+    if (candidate?.tagName.toLowerCase() === 'video') {
+      return true;
+    }
+    if (message.querySelector('video')) {
+      return true;
+    }
+    const messageTestId = message.getAttribute('data-testid') || '';
+    if (messageTestId.includes('video')) {
+      return true;
+    }
+    return Boolean(message.querySelector('[data-testid*="video"], [data-icon*="video"]'));
+  }
+
   private attachTranscribeButton(messageElement: HTMLElement, targetElement: HTMLElement): void {
     const container = this.uiFactory.getOrCreateContainer(messageElement, targetElement);
-    const button = this.uiFactory.createTranscribeButton((btn) => this.onTranscribeClick(messageElement, targetElement, btn, container));
+    const button = this.uiFactory.createTranscribeButton((btn) => {
+      void this.onTranscribeClick(messageElement, targetElement, btn, container);
+    });
     container.appendChild(button);
     void this.checkCachedTranscription(messageElement, button, container);
+    this.queueOrObserveMessage(messageElement, targetElement, button, container);
+  }
+
+  private queueOrObserveMessage(
+    messageElement: HTMLElement,
+    targetElement: HTMLElement,
+    button: HTMLButtonElement,
+    existingContainer?: HTMLElement
+  ): void {
+    if (!this.autoTranscribeQueue.isAutoEnabled()) {
+      return;
+    }
+    if (messageElement.dataset.vsAutoQueued === 'true' || messageElement.dataset.wgtAutoQueued === 'true') {
+      return;
+    }
+    if (!this.ageValidator.isWithinLast24Hours(messageElement)) {
+      return;
+    }
+    if (!this.visibilityObserver) {
+      this.enqueueIfAutoTranscribeEligible(messageElement, targetElement, button, existingContainer);
+      return;
+    }
+    this.pendingObservedMessages.set(messageElement, {
+      targetElement,
+      button,
+      container: existingContainer,
+    });
+    this.visibilityObserver.observe(messageElement);
+  }
+
+  private enqueueIfAutoTranscribeEligible(
+    messageElement: HTMLElement,
+    targetElement: HTMLElement,
+    button: HTMLButtonElement,
+    existingContainer?: HTMLElement
+  ): void {
+    if (!this.autoTranscribeQueue.isAutoEnabled()) {
+      return;
+    }
+    if (messageElement.dataset.vsAutoQueued === 'true' || messageElement.dataset.wgtAutoQueued === 'true') {
+      return;
+    }
+    messageElement.dataset.vsAutoQueued = 'true';
+    messageElement.dataset.wgtAutoQueued = 'true';
+    const container = existingContainer || this.uiFactory.getOrCreateContainer(messageElement, targetElement);
+    const audioId = this.extractMessageIdentifier(messageElement);
+    const task: AutoTranscribeTask = {
+      messageElement,
+      targetElement,
+      button,
+      container,
+      audioId,
+    };
+    this.autoTranscribeQueue.enqueue(task);
+  }
+
+  private async executeAutoTranscription(task: AutoTranscribeTask): Promise<void> {
+    const cached = await this.storage.getCachedTranscription(task.audioId);
+    if (cached) {
+      this.toggleCachedBubble(task.messageElement, task.container, cached, task.button);
+      return;
+    }
+    await this.transcribeAudioMessage(
+      task.messageElement,
+      task.targetElement,
+      task.button,
+      task.container,
+      task.audioId
+    );
   }
 
   private async onTranscribeClick(
@@ -74,6 +242,8 @@ export class WhatsAppMessageScanner {
     button: HTMLButtonElement,
     container: HTMLElement
   ): Promise<void> {
+    messageElement.dataset.vsAutoQueued = 'true';
+    messageElement.dataset.wgtAutoQueued = 'true';
     const audioId = this.extractMessageIdentifier(messageElement);
     const cached = await this.storage.getCachedTranscription(audioId);
 
@@ -82,6 +252,22 @@ export class WhatsAppMessageScanner {
       return;
     }
 
+    try {
+      await this.transcribeAudioMessage(messageElement, targetElement, button, container, audioId);
+    } catch {
+      // Erro tratado visualmente pelo handleTranscriptionError
+    }
+  }
+
+  private async transcribeAudioMessage(
+    messageElement: HTMLElement,
+    targetElement: HTMLElement,
+    button: HTMLButtonElement,
+    container: HTMLElement,
+    audioId: string
+  ): Promise<void> {
+    messageElement.dataset.vsAutoQueued = 'true';
+    messageElement.dataset.wgtAutoQueued = 'true';
     button.disabled = true;
     button.textContent = '⏳ Transcrevendo...';
     this.uiFactory.clearBubbles(container);
@@ -94,12 +280,15 @@ export class WhatsAppMessageScanner {
       if (audioId) {
         await this.storage.saveCachedTranscription(audioId, resultText);
       }
+      delete messageElement.dataset.vsClosed;
       delete messageElement.dataset.wgtClosed;
       this.uiFactory.renderBubble(container, resultText, false, () => {
+        messageElement.dataset.vsClosed = 'true';
         messageElement.dataset.wgtClosed = 'true';
       });
     } catch (error: unknown) {
       this.handleTranscriptionError(error, button, container, messageElement);
+      throw error;
     } finally {
       this.resetButtonState(button, audioId);
     }
@@ -112,14 +301,17 @@ export class WhatsAppMessageScanner {
     button: HTMLButtonElement
   ): void {
     button.textContent = '✓ Cache';
-    const existingBubble = container.querySelector('.wgt-bubble');
+    const existingBubble = container.querySelector('.vs-bubble, .wgt-bubble');
     if (existingBubble) {
       existingBubble.remove();
+      messageElement.dataset.vsClosed = 'true';
       messageElement.dataset.wgtClosed = 'true';
       return;
     }
+    delete messageElement.dataset.vsClosed;
     delete messageElement.dataset.wgtClosed;
     this.uiFactory.renderBubble(container, cachedText, false, () => {
+      messageElement.dataset.vsClosed = 'true';
       messageElement.dataset.wgtClosed = 'true';
     });
   }
@@ -129,19 +321,29 @@ export class WhatsAppMessageScanner {
     button: HTMLButtonElement,
     container: HTMLElement
   ): Promise<void> {
-    const audioId = this.extractMessageIdentifier(messageElement);
-    const cached = await this.storage.getCachedTranscription(audioId);
-    if (!cached) {
+    if (!this.isContextValid()) {
       return;
     }
-    if (button.isConnected) {
-      button.textContent = '✓ Cache';
-      button.title = 'Transcrição em cache (clique para alternar)';
-    }
-    if (!container.querySelector('.wgt-bubble') && !messageElement.dataset.wgtClosed) {
-      this.uiFactory.renderBubble(container, cached, false, () => {
-        messageElement.dataset.wgtClosed = 'true';
-      });
+    try {
+      const audioId = this.extractMessageIdentifier(messageElement);
+      const cached = await this.storage.getCachedTranscription(audioId);
+      if (!cached) {
+        return;
+      }
+      messageElement.dataset.vsAutoQueued = 'true';
+      messageElement.dataset.wgtAutoQueued = 'true';
+      if (button.isConnected) {
+        button.textContent = '✓ Cache';
+        button.title = 'Transcrição em cache (clique para alternar)';
+      }
+      if (!container.querySelector('.vs-bubble, .wgt-bubble') && !messageElement.dataset.vsClosed && !messageElement.dataset.wgtClosed) {
+        this.uiFactory.renderBubble(container, cached, false, () => {
+          messageElement.dataset.vsClosed = 'true';
+          messageElement.dataset.wgtClosed = 'true';
+        });
+      }
+    } catch {
+      // Silencia erros se o contexto da extensão foi invalidado
     }
   }
 
@@ -157,6 +359,7 @@ export class WhatsAppMessageScanner {
     if (isQuota) {
       this.startCooldownAutoCountdown(button, container, messageElement, message);
       this.uiFactory.renderBubble(container, `${message}\n\nDica: você pode adicionar novas chaves em Opções.`, false, () => {
+        messageElement.dataset.vsClosed = 'true';
         messageElement.dataset.wgtClosed = 'true';
       });
       return;
@@ -165,6 +368,7 @@ export class WhatsAppMessageScanner {
     button.textContent = '✕ Erro';
     button.disabled = false;
     this.uiFactory.renderBubble(container, message || 'Falha na transcrição.', true, () => {
+      messageElement.dataset.vsClosed = 'true';
       messageElement.dataset.wgtClosed = 'true';
     });
   }
@@ -183,6 +387,10 @@ export class WhatsAppMessageScanner {
     button.textContent = `🕐 Cooldown (${initialSeconds}s)`;
 
     const timer = setInterval(() => {
+      if (!this.isContextValid()) {
+        clearInterval(timer);
+        return;
+      }
       const remainingSeconds = Math.max(0, Math.ceil((targetTimestamp - Date.now()) / 1000));
 
       if (!button.isConnected) {
@@ -200,6 +408,7 @@ export class WhatsAppMessageScanner {
       button.textContent = `🕐 Cooldown (${remainingSeconds}s)`;
     }, 1000);
 
+    (button as any)._vsCooldownTimer = timer;
     (button as any)._wgtCooldownTimer = timer;
   }
 
@@ -226,9 +435,10 @@ export class WhatsAppMessageScanner {
   }
 
   private clearButtonCooldownTimer(button: HTMLButtonElement): void {
-    const timer = (button as any)._wgtCooldownTimer;
+    const timer = (button as any)._vsCooldownTimer || (button as any)._wgtCooldownTimer;
     if (timer) {
       clearInterval(timer);
+      delete (button as any)._vsCooldownTimer;
       delete (button as any)._wgtCooldownTimer;
     }
   }
@@ -240,60 +450,96 @@ export class WhatsAppMessageScanner {
   ): Promise<void> {
     this.clearButtonCooldownTimer(button);
     button.disabled = false;
-    const audioId = this.extractMessageIdentifier(messageElement);
-    const cached = await this.storage.getCachedTranscription(audioId);
-
-    if (button.isConnected) {
-      button.textContent = cached ? '✓ Cache' : '🎙 Transcrever';
+    if (!this.isContextValid()) {
+      return;
     }
+    try {
+      const audioId = this.extractMessageIdentifier(messageElement);
+      const cached = await this.storage.getCachedTranscription(audioId);
 
-    if (container) {
-      const bubble = container.querySelector('.wgt-bubble');
-      if (bubble && bubble.textContent?.includes('Limite da API')) {
-        bubble.remove();
+      if (button.isConnected) {
+        button.textContent = cached ? '✓ Cache' : '🎙 Transcrever';
       }
+
+      if (container) {
+        const bubble = container.querySelector('.vs-bubble, .wgt-bubble');
+        if (bubble && bubble.textContent?.includes('Limite da API')) {
+          bubble.remove();
+        }
+      }
+    } catch {
+      // Silencia erros se o contexto da extensão foi invalidado
     }
   }
 
   private resetButtonState(button: HTMLButtonElement, audioId: string): void {
     setTimeout(async () => {
-      if (!button.isConnected || button.textContent?.includes('Cooldown')) {
+      if (!this.isContextValid() || !button.isConnected || button.textContent?.includes('Cooldown')) {
         return;
       }
-      button.disabled = false;
-      const cached = await this.storage.getCachedTranscription(audioId);
-      if (button.isConnected) {
-        button.textContent = cached ? '✓ Cache' : '🎙 Transcrever';
+      try {
+        button.disabled = false;
+        const cached = await this.storage.getCachedTranscription(audioId);
+        if (button.isConnected) {
+          button.textContent = cached ? '✓ Cache' : '🎙 Transcrever';
+        }
+      } catch {
+        // Silencia erros se o contexto da extensão foi invalidado
       }
     }, 2500);
   }
 
   private listenStorageChanges(): void {
-    chrome.storage?.onChanged?.addListener((changes, area) => {
-      if (area === 'local' && changes.geminiKeys) {
-        void this.checkAndRestoreAvailableKeys();
-      }
-    });
+    if (!this.isContextValid()) {
+      return;
+    }
+    try {
+      chrome.storage?.onChanged?.addListener((changes, area) => {
+        if (!this.isContextValid()) {
+          return;
+        }
+        if (area === 'local' && changes.geminiKeys) {
+          void this.checkAndRestoreAvailableKeys();
+        }
+        if (area === 'local' && changes.auto_transcribe_enabled) {
+          const isEnabled = Boolean(changes.auto_transcribe_enabled.newValue);
+          this.autoTranscribeQueue.setEnabled(isEnabled);
+          if (isEnabled) {
+            this.scan();
+          }
+        }
+      });
+    } catch {
+      // Silencia erros se o contexto da extensão foi invalidado
+    }
   }
 
   private async checkAndRestoreAvailableKeys(): Promise<void> {
-    const records = await this.storage.getStoredKeys();
-    const now = Date.now();
-    const hasAvailableKey = records.some((r) => r.active && (!r.rateLimitReset || r.rateLimitReset <= now));
-    if (hasAvailableKey) {
-      this.restoreAllCooldownButtons();
+    if (!this.isContextValid()) {
+      return;
+    }
+    try {
+      const records = await this.storage.getStoredKeys();
+      const now = Date.now();
+      const hasAvailableKey = records.some((r) => r.active && (!r.rateLimitReset || r.rateLimitReset <= now));
+      if (hasAvailableKey) {
+        this.restoreAllCooldownButtons();
+        this.autoTranscribeQueue.resume();
+      }
+    } catch {
+      // Silencia erros se o contexto da extensão foi invalidado
     }
   }
 
   private restoreAllCooldownButtons(): void {
-    const buttons = document.querySelectorAll<HTMLButtonElement>('.wgt-transcribe-button');
+    const buttons = document.querySelectorAll<HTMLButtonElement>('.vs-transcribe-button, .wgt-transcribe-button');
     buttons.forEach((button) => {
       if (button.textContent?.includes('Cooldown')) {
         this.clearButtonCooldownTimer(button);
         button.disabled = false;
         button.textContent = '🎙 Transcrever';
-        const container = button.closest<HTMLElement>('.wgt-container');
-        const bubble = container?.querySelector('.wgt-bubble');
+        const container = button.closest<HTMLElement>('.vs-container, .wgt-container');
+        const bubble = container?.querySelector('.vs-bubble, .wgt-bubble');
         if (bubble && bubble.textContent?.includes('Limite da API')) {
           bubble.remove();
         }
@@ -303,22 +549,46 @@ export class WhatsAppMessageScanner {
 
   private sendToBackgroundForTranscription(audioDataUrl: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({ action: 'transcribe', dataUrl: audioDataUrl }, (response) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
-        }
-        if (response?.error) {
-          reject(new Error(response.error));
-          return;
-        }
-        if (typeof response?.text === 'string') {
-          resolve(response.text);
-          return;
-        }
-        reject(new Error('Resposta inválida do serviço de transcrição.'));
-      });
+      if (!this.isContextValid()) {
+        reject(new Error('Extension context invalidated.'));
+        return;
+      }
+      this.dispatchTranscriptionMessage(audioDataUrl, resolve, reject);
     });
+  }
+
+  private dispatchTranscriptionMessage(
+    audioDataUrl: string,
+    resolve: (value: string) => void,
+    reject: (reason?: any) => void
+  ): void {
+    try {
+      chrome.runtime.sendMessage({ action: 'transcribe', dataUrl: audioDataUrl }, (response) => {
+        this.handleTranscriptionResponse(response, resolve, reject);
+      });
+    } catch (error) {
+      reject(error);
+    }
+  }
+
+  private handleTranscriptionResponse(
+    response: any,
+    resolve: (value: string) => void,
+    reject: (reason?: any) => void
+  ): void {
+    if (chrome.runtime?.lastError) {
+      reject(new Error(chrome.runtime.lastError.message));
+      return;
+    }
+    if (response?.error) {
+      reject(new Error(response.error));
+      return;
+    }
+    if (typeof response?.text === 'string') {
+      resolve(response.text);
+      return;
+    }
+    reject(new Error('Resposta inválida do serviço de transcrição.'));
   }
 
   private findMessageContainer(element: HTMLElement): HTMLElement | null {
@@ -371,19 +641,35 @@ export class WhatsAppMessageScanner {
   }
 
   private startHeartbeat(): void {
-    setInterval(() => {
+    const timer = setInterval(() => {
+      if (!this.isContextValid()) {
+        clearInterval(timer);
+        return;
+      }
       this.scan();
       void this.checkAndRestoreAvailableKeys();
     }, 2000);
   }
 
   public injectNetworkInterceptor(): void {
-    if (document.getElementById('wgt-interceptor')) {
+    if (!this.isContextValid() || document.getElementById('vs-interceptor') || document.getElementById('wgt-interceptor')) {
       return;
     }
-    const script = document.createElement('script');
-    script.id = 'wgt-interceptor';
-    script.src = chrome.runtime.getURL('interceptor.js');
-    (document.head || document.documentElement).appendChild(script);
+    try {
+      const script = document.createElement('script');
+      script.id = 'vs-interceptor';
+      script.src = chrome.runtime.getURL('interceptor.js');
+      (document.head || document.documentElement).appendChild(script);
+    } catch {
+      // Silencia erros se o contexto da extensão foi invalidado
+    }
+  }
+
+  private isContextValid(): boolean {
+    try {
+      return Boolean(typeof chrome !== 'undefined' && chrome.runtime?.id);
+    } catch {
+      return false;
+    }
   }
 }

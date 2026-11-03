@@ -4,23 +4,28 @@
  */
 export class PageAudioInterceptor {
   private static readonly MAX_STORED_BLOBS = 50;
-  private readonly blobStore: Map<string, Blob & { __wgtTimestamp?: number }>;
+  private readonly blobStore: Map<string, Blob & { __vsTimestamp?: number; __wgtTimestamp?: number }>;
   private isSilentCaptureActive = false;
   private silentCaptureTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     const globalWindow = window as unknown as {
-      __wgtBlobStore?: Map<string, Blob & { __wgtTimestamp?: number }>;
+      __vsBlobStore?: Map<string, Blob & { __vsTimestamp?: number; __wgtTimestamp?: number }>;
+      __wgtBlobStore?: Map<string, Blob & { __vsTimestamp?: number; __wgtTimestamp?: number }>;
     };
-    globalWindow.__wgtBlobStore = globalWindow.__wgtBlobStore || new Map();
-    this.blobStore = globalWindow.__wgtBlobStore;
+    globalWindow.__vsBlobStore = globalWindow.__vsBlobStore || globalWindow.__wgtBlobStore || new Map();
+    this.blobStore = globalWindow.__vsBlobStore;
   }
 
   public start(): void {
-    const globalWindow = window as unknown as { __wgtInterceptorInstalled?: boolean };
-    if (globalWindow.__wgtInterceptorInstalled) {
+    const globalWindow = window as unknown as {
+      __vsInterceptorInstalled?: boolean;
+      __wgtInterceptorInstalled?: boolean;
+    };
+    if (globalWindow.__vsInterceptorInstalled || globalWindow.__wgtInterceptorInstalled) {
       return;
     }
+    globalWindow.__vsInterceptorInstalled = true;
     globalWindow.__wgtInterceptorInstalled = true;
 
     this.listenForSilentCapture();
@@ -34,10 +39,16 @@ export class PageAudioInterceptor {
   }
 
   private listenForSilentCapture(): void {
+    window.addEventListener('vs-silent-capture-start', () => {
+      this.handleSilentCaptureStart();
+    });
     window.addEventListener('wgt-silent-capture-start', () => {
       this.handleSilentCaptureStart();
     });
 
+    window.addEventListener('vs-silent-capture-stop', () => {
+      this.handleSilentCaptureStop();
+    });
     window.addEventListener('wgt-silent-capture-stop', () => {
       this.handleSilentCaptureStop();
     });
@@ -52,7 +63,7 @@ export class PageAudioInterceptor {
       this.isSilentCaptureActive = false;
     }, 30000);
 
-    const mediaElements = document.querySelectorAll<HTMLMediaElement>('audio, video');
+    const mediaElements = document.querySelectorAll<HTMLAudioElement>('audio');
     mediaElements.forEach((element) => this.muteElement(element));
   }
 
@@ -62,7 +73,7 @@ export class PageAudioInterceptor {
       clearTimeout(this.silentCaptureTimer);
     }
 
-    const mediaElements = document.querySelectorAll<HTMLMediaElement>('audio, video');
+    const mediaElements = document.querySelectorAll<HTMLAudioElement>('audio');
     mediaElements.forEach((element) => this.restoreElement(element));
   }
 
@@ -112,6 +123,11 @@ export class PageAudioInterceptor {
       return;
     }
     window.dispatchEvent(
+      new CustomEvent('vs-audio', {
+        detail: { url: audioUrl, timestamp: Date.now() },
+      })
+    );
+    window.dispatchEvent(
       new CustomEvent('wgt-audio', {
         detail: { url: audioUrl, timestamp: Date.now() },
       })
@@ -134,7 +150,7 @@ export class PageAudioInterceptor {
       if (!this.isSilentCaptureActive) {
         return;
       }
-      const mediaElements = document.querySelectorAll<HTMLMediaElement>('audio, video');
+      const mediaElements = document.querySelectorAll<HTMLAudioElement>('audio');
       mediaElements.forEach((element) => this.muteElement(element));
     });
     mediaObserver.observe(document.documentElement, { childList: true, subtree: true });
@@ -146,7 +162,7 @@ export class PageAudioInterceptor {
 
     URL.createObjectURL = function (object: Blob | MediaSource): string {
       const url = originalCreate(object);
-      if (object instanceof Blob && self.isAudioOrVideoBlob(object)) {
+      if (object instanceof Blob && self.isAudioBlob(object)) {
         self.registerAudioBlob(url, object);
       }
       self.emitAudioUrlIfInteresting(url, object instanceof Blob ? object.type : '');
@@ -184,20 +200,21 @@ export class PageAudioInterceptor {
     const self = this;
 
     XMLHttpRequest.prototype.open = function (
-      this: XMLHttpRequest & { _wgtUrl?: string },
+      this: XMLHttpRequest & { _vsUrl?: string; _wgtUrl?: string },
       method: string,
       url: string | URL,
       ...rest: any[]
     ): void {
+      this._vsUrl = String(url);
       this._wgtUrl = String(url);
       return (originalOpen as any).apply(this, [method, url, ...rest]);
     };
 
     XMLHttpRequest.prototype.send = function (
-      this: XMLHttpRequest & { _wgtUrl?: string },
+      this: XMLHttpRequest & { _vsUrl?: string; _wgtUrl?: string },
       body?: Document | XMLHttpRequestBodyInit | null
     ): void {
-      const url = this._wgtUrl || '';
+      const url = this._vsUrl || this._wgtUrl || '';
       this.addEventListener('load', () => {
         const contentType = this.getResponseHeader('Content-Type') || '';
         self.emitAudioUrlIfInteresting(url, contentType);
@@ -216,14 +233,19 @@ export class PageAudioInterceptor {
     const lower = url.toLowerCase();
     const isInteresting =
       lower.includes('mmg.whatsapp.net') ||
-      /\.(ogg|opus|mp4)(?:[?#]|$)/i.test(lower) ||
+      /\.(ogg|opus)(?:[?#]|$)/i.test(lower) ||
       lower.includes('/media/') ||
-      this.isAudioOrVideoType(type);
+      this.isAudioType(type);
 
     if (!isInteresting) {
       return;
     }
 
+    window.dispatchEvent(
+      new CustomEvent('vs-audio', {
+        detail: { url, type, timestamp: Date.now() },
+      })
+    );
     window.dispatchEvent(
       new CustomEvent('wgt-audio', {
         detail: { url, type, timestamp: Date.now() },
@@ -231,11 +253,17 @@ export class PageAudioInterceptor {
     );
   }
 
-  private registerAudioBlob(url: string, blob: Blob & { __wgtTimestamp?: number }): void {
-    blob.__wgtTimestamp = Date.now();
+  private registerAudioBlob(url: string, blob: Blob & { __vsTimestamp?: number; __wgtTimestamp?: number }): void {
+    blob.__vsTimestamp = Date.now();
+    blob.__wgtTimestamp = blob.__vsTimestamp;
     this.blobStore.set(url, blob);
     this.pruneOldBlobs();
 
+    window.dispatchEvent(
+      new CustomEvent('vs-audio', {
+        detail: { url, timestamp: blob.__vsTimestamp, blob },
+      })
+    );
     window.dispatchEvent(
       new CustomEvent('wgt-audio', {
         detail: { url, timestamp: blob.__wgtTimestamp, blob },
@@ -254,17 +282,17 @@ export class PageAudioInterceptor {
   }
 
   private listenForAudioRequests(): void {
-    window.addEventListener('wgt-request-audio', async (event: Event) => {
+    const onAudioRequest = async (event: Event) => {
       const customEvent = event as CustomEvent;
       const detail = customEvent.detail || {};
-      const { requestId, url, minTimestamp } = detail;
+      const { requestId, url, minTimestamp, messageId, filehash } = detail;
 
       if (!requestId) {
         return;
       }
 
       try {
-        const blob = await this.resolveBlob(url, minTimestamp);
+        const blob = await this.resolveBlob(url, minTimestamp, filehash, messageId);
         if (!blob) {
           this.respondAudioError(requestId, 'Áudio não encontrado no contexto da página.');
           return;
@@ -274,10 +302,23 @@ export class PageAudioInterceptor {
         const errorMessage = error instanceof Error ? error.message : String(error);
         this.respondAudioError(requestId, errorMessage);
       }
-    });
+    };
+
+    window.addEventListener('vs-request-audio', onAudioRequest);
+    window.addEventListener('wgt-request-audio', onAudioRequest);
   }
 
-  private async resolveBlob(url?: string, minTimestamp?: number): Promise<Blob | null> {
+  private async resolveBlob(
+    url?: string,
+    minTimestamp?: number,
+    filehash?: string,
+    messageId?: string
+  ): Promise<Blob | null> {
+    const memoryBlob = await this.tryResolveFromWhatsAppMediaCache(filehash, messageId);
+    if (memoryBlob) {
+      return memoryBlob;
+    }
+
     if (url) {
       const stored = this.blobStore.get(url);
       if (stored) {
@@ -303,7 +344,138 @@ export class PageAudioInterceptor {
     return null;
   }
 
+  private async tryResolveFromWhatsAppMediaCache(
+    filehash?: string,
+    messageId?: string
+  ): Promise<Blob | null> {
+    const msg = messageId ? this.findMessageModel(messageId) : null;
+    const resolvedHash = filehash || msg?.filehash || msg?.mediaData?.filehash || null;
+    const cache = this.getInMemoryMediaBlobCache();
+
+    if (resolvedHash && cache) {
+      const existingBlob = await this.resolveBlobFromCache(cache, resolvedHash);
+      if (existingBlob) {
+        return existingBlob;
+      }
+    }
+
+    if (msg) {
+      return this.downloadAndPollDecryptedBlob(msg, resolvedHash, cache);
+    }
+
+    return null;
+  }
+
+  private findMessageModel(messageId: string): any {
+    const win = window as any;
+    const collections = this.safeRequireModule(win.require, 'WAWebCollections');
+    const msgCollection = this.safeRequireModule(win.require, 'WAWebMsgCollection');
+    const Msg = collections?.Msg || msgCollection?.MsgCollection || null;
+    if (!Msg) {
+      return null;
+    }
+    if (Array.isArray(Msg._models)) {
+      const found = Msg._models.find((item: any) => {
+        const itemId = item.id?.id || item.id?._serialized || item.id;
+        return itemId === messageId || String(itemId).includes(messageId) || messageId.includes(String(itemId));
+      });
+      if (found) {
+        return found;
+      }
+    }
+    return Msg.get?.(messageId) || null;
+  }
+
+  private getInMemoryMediaBlobCache(): any {
+    const win = window as any;
+    if (typeof win.require !== 'function') {
+      return null;
+    }
+    const moduleItem = this.safeRequireModule(win.require, 'WAWebMediaInMemoryBlobCache');
+    return moduleItem?.InMemoryMediaBlobCache || moduleItem || null;
+  }
+
+  private async resolveBlobFromCache(cache: any, filehash: string): Promise<Blob | null> {
+    try {
+      const directBlob = cache.get?.(filehash);
+      if (directBlob instanceof Blob) {
+        return directBlob;
+      }
+      const blobUrl = cache.getOrCreateURL?.(filehash);
+      if (typeof blobUrl === 'string' && blobUrl.startsWith('blob:')) {
+        return await this.tryFetchBlob(blobUrl);
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async downloadAndPollDecryptedBlob(
+    msg: any,
+    filehash: string | null,
+    cache: any
+  ): Promise<Blob | null> {
+    this.triggerWhatsAppMediaDownload(msg);
+    return this.pollForDecryptedBlob(msg, filehash, cache);
+  }
+
+  private triggerWhatsAppMediaDownload(msg: any): void {
+    if (typeof msg.downloadMedia !== 'function') {
+      return;
+    }
+    try {
+      msg.downloadMedia({
+        downloadEvenIfExpensive: true,
+        rmrReason: 1,
+        isUserInitiated: true,
+      });
+    } catch {
+      // Ignora erro de disparo do download nativo
+    }
+  }
+
+  private async pollForDecryptedBlob(
+    msg: any,
+    filehash: string | null,
+    cache: any
+  ): Promise<Blob | null> {
+    for (let index = 0; index < 20; index++) {
+      await this.sleep(150);
+      const activeHash = filehash || msg.filehash || msg.mediaData?.filehash;
+      if (activeHash && cache) {
+        const blobFromCache = await this.resolveBlobFromCache(cache, activeHash);
+        if (blobFromCache) {
+          return blobFromCache;
+        }
+      }
+      const mediaBlob = msg.mediaData?.mediaBlob;
+      if (mediaBlob instanceof Blob) {
+        return mediaBlob;
+      }
+    }
+    return null;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private safeRequireModule(requireFn: any, moduleName: string): any {
+    if (typeof requireFn !== 'function') {
+      return null;
+    }
+    try {
+      return requireFn(moduleName);
+    } catch {
+      return null;
+    }
+  }
+
   private async tryFetchBlob(url: string): Promise<Blob | null> {
+    if (url.includes('.enc') || (url.includes('whatsapp.net') && !url.startsWith('blob:'))) {
+      return null;
+    }
     try {
       const res = await fetch(url);
       if (!res.ok) {
@@ -320,7 +492,7 @@ export class PageAudioInterceptor {
     let bestTime = 0;
 
     for (const [, blobItem] of this.blobStore.entries()) {
-      const timestamp = blobItem.__wgtTimestamp || 0;
+      const timestamp = blobItem.__vsTimestamp || blobItem.__wgtTimestamp || 0;
       if (timestamp >= minTimestamp && timestamp >= bestTime) {
         bestBlob = blobItem;
         bestTime = timestamp;
@@ -331,7 +503,7 @@ export class PageAudioInterceptor {
   }
 
   private async findBlobFromDomElements(): Promise<Blob | null> {
-    const audioElements = Array.from(document.querySelectorAll<HTMLMediaElement>('audio, video')).filter(
+    const audioElements = Array.from(document.querySelectorAll<HTMLAudioElement>('audio')).filter(
       (element) => element.currentSrc || element.src
     );
 
@@ -355,7 +527,22 @@ export class PageAudioInterceptor {
 
   private respondAudioError(requestId: string, error: string): void {
     window.dispatchEvent(
+      new CustomEvent('vs-response-audio', {
+        detail: { requestId, error },
+      })
+    );
+    window.dispatchEvent(
+      new CustomEvent('vs-audio-response', {
+        detail: { requestId, error },
+      })
+    );
+    window.dispatchEvent(
       new CustomEvent('wgt-response-audio', {
+        detail: { requestId, error },
+      })
+    );
+    window.dispatchEvent(
+      new CustomEvent('wgt-audio-response', {
         detail: { requestId, error },
       })
     );
@@ -364,7 +551,22 @@ export class PageAudioInterceptor {
   private async respondAudioBlobAsDataUrl(requestId: string, blob: Blob): Promise<void> {
     const dataUrl = await this.blobToDataUrl(blob);
     window.dispatchEvent(
+      new CustomEvent('vs-response-audio', {
+        detail: { requestId, dataUrl },
+      })
+    );
+    window.dispatchEvent(
+      new CustomEvent('vs-audio-response', {
+        detail: { requestId, dataUrl },
+      })
+    );
+    window.dispatchEvent(
       new CustomEvent('wgt-response-audio', {
+        detail: { requestId, dataUrl },
+      })
+    );
+    window.dispatchEvent(
+      new CustomEvent('wgt-audio-response', {
         detail: { requestId, dataUrl },
       })
     );
@@ -379,18 +581,17 @@ export class PageAudioInterceptor {
     });
   }
 
-  private isAudioOrVideoBlob(blob: Blob): boolean {
-    return this.isAudioOrVideoType(blob.type);
+  private isAudioBlob(blob: Blob): boolean {
+    return this.isAudioType(blob.type);
   }
 
-  private isAudioOrVideoType(type?: string): boolean {
+  private isAudioType(type?: string): boolean {
     if (!type || typeof type !== 'string') {
       return true;
     }
     const lower = type.toLowerCase();
     return (
       lower.startsWith('audio/') ||
-      lower.startsWith('video/') ||
       lower.includes('ogg') ||
       lower.includes('opus') ||
       lower.includes('octet-stream')
