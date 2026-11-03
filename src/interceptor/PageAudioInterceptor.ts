@@ -257,14 +257,14 @@ export class PageAudioInterceptor {
     window.addEventListener('wgt-request-audio', async (event: Event) => {
       const customEvent = event as CustomEvent;
       const detail = customEvent.detail || {};
-      const { requestId, url, minTimestamp } = detail;
+      const { requestId, url, minTimestamp, messageId, filehash } = detail;
 
       if (!requestId) {
         return;
       }
 
       try {
-        const blob = await this.resolveBlob(url, minTimestamp);
+        const blob = await this.resolveBlob(url, minTimestamp, filehash, messageId);
         if (!blob) {
           this.respondAudioError(requestId, 'Áudio não encontrado no contexto da página.');
           return;
@@ -277,7 +277,17 @@ export class PageAudioInterceptor {
     });
   }
 
-  private async resolveBlob(url?: string, minTimestamp?: number): Promise<Blob | null> {
+  private async resolveBlob(
+    url?: string,
+    minTimestamp?: number,
+    filehash?: string,
+    messageId?: string
+  ): Promise<Blob | null> {
+    const memoryBlob = await this.tryResolveFromWhatsAppMediaCache(filehash, messageId);
+    if (memoryBlob) {
+      return memoryBlob;
+    }
+
     if (url) {
       const stored = this.blobStore.get(url);
       if (stored) {
@@ -303,7 +313,138 @@ export class PageAudioInterceptor {
     return null;
   }
 
+  private async tryResolveFromWhatsAppMediaCache(
+    filehash?: string,
+    messageId?: string
+  ): Promise<Blob | null> {
+    const msg = messageId ? this.findMessageModel(messageId) : null;
+    const resolvedHash = filehash || msg?.filehash || msg?.mediaData?.filehash || null;
+    const cache = this.getInMemoryMediaBlobCache();
+
+    if (resolvedHash && cache) {
+      const existingBlob = await this.resolveBlobFromCache(cache, resolvedHash);
+      if (existingBlob) {
+        return existingBlob;
+      }
+    }
+
+    if (msg) {
+      return this.downloadAndPollDecryptedBlob(msg, resolvedHash, cache);
+    }
+
+    return null;
+  }
+
+  private findMessageModel(messageId: string): any {
+    const win = window as any;
+    const collections = this.safeRequireModule(win.require, 'WAWebCollections');
+    const msgCollection = this.safeRequireModule(win.require, 'WAWebMsgCollection');
+    const Msg = collections?.Msg || msgCollection?.MsgCollection || null;
+    if (!Msg) {
+      return null;
+    }
+    if (Array.isArray(Msg._models)) {
+      const found = Msg._models.find((item: any) => {
+        const itemId = item.id?.id || item.id?._serialized || item.id;
+        return itemId === messageId || String(itemId).includes(messageId) || messageId.includes(String(itemId));
+      });
+      if (found) {
+        return found;
+      }
+    }
+    return Msg.get?.(messageId) || null;
+  }
+
+  private getInMemoryMediaBlobCache(): any {
+    const win = window as any;
+    if (typeof win.require !== 'function') {
+      return null;
+    }
+    const moduleItem = this.safeRequireModule(win.require, 'WAWebMediaInMemoryBlobCache');
+    return moduleItem?.InMemoryMediaBlobCache || moduleItem || null;
+  }
+
+  private async resolveBlobFromCache(cache: any, filehash: string): Promise<Blob | null> {
+    try {
+      const directBlob = cache.get?.(filehash);
+      if (directBlob instanceof Blob) {
+        return directBlob;
+      }
+      const blobUrl = cache.getOrCreateURL?.(filehash);
+      if (typeof blobUrl === 'string' && blobUrl.startsWith('blob:')) {
+        return await this.tryFetchBlob(blobUrl);
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async downloadAndPollDecryptedBlob(
+    msg: any,
+    filehash: string | null,
+    cache: any
+  ): Promise<Blob | null> {
+    this.triggerWhatsAppMediaDownload(msg);
+    return this.pollForDecryptedBlob(msg, filehash, cache);
+  }
+
+  private triggerWhatsAppMediaDownload(msg: any): void {
+    if (typeof msg.downloadMedia !== 'function') {
+      return;
+    }
+    try {
+      msg.downloadMedia({
+        downloadEvenIfExpensive: true,
+        rmrReason: 1,
+        isUserInitiated: true,
+      });
+    } catch {
+      // Ignora erro de disparo do download nativo
+    }
+  }
+
+  private async pollForDecryptedBlob(
+    msg: any,
+    filehash: string | null,
+    cache: any
+  ): Promise<Blob | null> {
+    for (let index = 0; index < 20; index++) {
+      await this.sleep(150);
+      const activeHash = filehash || msg.filehash || msg.mediaData?.filehash;
+      if (activeHash && cache) {
+        const blobFromCache = await this.resolveBlobFromCache(cache, activeHash);
+        if (blobFromCache) {
+          return blobFromCache;
+        }
+      }
+      const mediaBlob = msg.mediaData?.mediaBlob;
+      if (mediaBlob instanceof Blob) {
+        return mediaBlob;
+      }
+    }
+    return null;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private safeRequireModule(requireFn: any, moduleName: string): any {
+    if (typeof requireFn !== 'function') {
+      return null;
+    }
+    try {
+      return requireFn(moduleName);
+    } catch {
+      return null;
+    }
+  }
+
   private async tryFetchBlob(url: string): Promise<Blob | null> {
+    if (url.includes('.enc') || (url.includes('whatsapp.net') && !url.startsWith('blob:'))) {
+      return null;
+    }
     try {
       const res = await fetch(url);
       if (!res.ok) {
@@ -359,12 +500,22 @@ export class PageAudioInterceptor {
         detail: { requestId, error },
       })
     );
+    window.dispatchEvent(
+      new CustomEvent('wgt-audio-response', {
+        detail: { requestId, error },
+      })
+    );
   }
 
   private async respondAudioBlobAsDataUrl(requestId: string, blob: Blob): Promise<void> {
     const dataUrl = await this.blobToDataUrl(blob);
     window.dispatchEvent(
       new CustomEvent('wgt-response-audio', {
+        detail: { requestId, dataUrl },
+      })
+    );
+    window.dispatchEvent(
+      new CustomEvent('wgt-audio-response', {
         detail: { requestId, dataUrl },
       })
     );

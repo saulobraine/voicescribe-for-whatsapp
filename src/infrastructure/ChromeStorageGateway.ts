@@ -12,6 +12,7 @@ export class ChromeStorageGateway {
   private static readonly STORAGE_KEYS = 'geminiKeys';
   private static readonly STORAGE_LEGACY_KEY = 'geminiKey';
   private static readonly STORAGE_SELECTED_MODEL = 'selectedModel';
+  private static readonly STORAGE_AUTO_TRANSCRIBE = 'auto_transcribe_enabled';
   private static readonly DEFAULT_MODEL = 'gemini-3.8-flash';
   private static readonly MSG_CACHE_PREFIX = 'wgt_msg_cache_';
 
@@ -71,6 +72,21 @@ export class ChromeStorageGateway {
       return;
     }
     await chrome.storage.local.set({ [ChromeStorageGateway.STORAGE_SELECTED_MODEL]: modelName });
+  }
+
+  public async isAutoTranscribeEnabled(): Promise<boolean> {
+    if (!this.isStorageAvailable()) {
+      return false;
+    }
+    const data = await chrome.storage.local.get([ChromeStorageGateway.STORAGE_AUTO_TRANSCRIBE]);
+    return Boolean(data[ChromeStorageGateway.STORAGE_AUTO_TRANSCRIBE]);
+  }
+
+  public async setAutoTranscribeEnabled(enabled: boolean): Promise<void> {
+    if (!this.isStorageAvailable()) {
+      return;
+    }
+    await chrome.storage.local.set({ [ChromeStorageGateway.STORAGE_AUTO_TRANSCRIBE]: enabled });
   }
 
   public async getCachedTranscription(messageId: string): Promise<string | null> {

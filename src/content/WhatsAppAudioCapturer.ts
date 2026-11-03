@@ -10,10 +10,15 @@ export class WhatsAppAudioCapturer {
   }
 
   public async captureAudioDataUrl(messageElement: HTMLElement, targetElement?: HTMLElement): Promise<string> {
+    const memoryDataUrl = await this.tryRequestFromPageCache(messageElement);
+    if (memoryDataUrl) {
+      return memoryDataUrl;
+    }
+
     const existingMedia = this.findMediaElement(messageElement, targetElement);
     const existingUrl = existingMedia?.currentSrc || existingMedia?.src || null;
 
-    if (existingUrl) {
+    if (existingUrl && this.isSafeLocalBlobUrl(existingUrl)) {
       const directDataUrl = await this.tryFetchOrRequestFromPage(existingUrl);
       if (directDataUrl) {
         return directDataUrl;
@@ -21,6 +26,47 @@ export class WhatsAppAudioCapturer {
     }
 
     return this.captureViaSilentPlayback(messageElement, existingMedia);
+  }
+
+  private isSafeLocalBlobUrl(url?: string | null): boolean {
+    if (!url || typeof url !== 'string') {
+      return false;
+    }
+    if (!url.startsWith('blob:')) {
+      return false;
+    }
+    const lower = url.toLowerCase();
+    return !lower.includes('.enc') && !lower.includes('whatsapp.net');
+  }
+
+  private async tryRequestFromPageCache(messageElement: HTMLElement): Promise<string | null> {
+    const messageId = this.extractMessageId(messageElement);
+    const filehash = this.extractFilehash(messageElement);
+    if (!messageId && !filehash) {
+      return null;
+    }
+    try {
+      return await this.requestAudioFromPage(null, undefined, messageId, filehash || undefined);
+    } catch {
+      return null;
+    }
+  }
+
+  private extractMessageId(messageElement: HTMLElement): string {
+    return (
+      messageElement.getAttribute('data-id') ||
+      messageElement.dataset.id ||
+      messageElement.getAttribute('data-testid')?.replace(/^conv-msg-/, '') ||
+      ''
+    );
+  }
+
+  private extractFilehash(messageElement: HTMLElement): string | null {
+    return (
+      messageElement.getAttribute('data-filehash') ||
+      messageElement.dataset.filehash ||
+      null
+    );
   }
 
   public findMediaElement(messageElement: HTMLElement, targetElement?: HTMLElement): HTMLMediaElement | null {
@@ -36,17 +82,13 @@ export class WhatsAppAudioCapturer {
   }
 
   private async tryFetchOrRequestFromPage(url: string): Promise<string | null> {
-    if (!url.startsWith('blob:')) {
-      try {
-        return await this.fetchAsDataUrl(url);
-      } catch {
-        // Fallback para requisição no contexto da página
-      }
+    if (!this.isSafeLocalBlobUrl(url)) {
+      return null;
     }
     try {
-      return await this.requestAudioFromPage(url);
+      return await this.fetchAsDataUrl(url);
     } catch {
-      return null;
+      return this.requestAudioFromPage(url);
     }
   }
 
@@ -249,7 +291,12 @@ export class WhatsAppAudioCapturer {
     return null;
   }
 
-  private async requestAudioFromPage(url: string | null, minTimestamp?: number): Promise<string> {
+  private async requestAudioFromPage(
+    url: string | null,
+    minTimestamp?: number,
+    messageId?: string,
+    filehash?: string
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
       const requestId = `wgt_${Math.random().toString(36).slice(2, 9)}`;
       const timer = setTimeout(() => {
@@ -263,6 +310,7 @@ export class WhatsAppAudioCapturer {
           return;
         }
         window.removeEventListener('wgt-response-audio', handler as EventListener);
+        window.removeEventListener('wgt-audio-response', handler as EventListener);
         clearTimeout(timer);
 
         if (detail.error) {
@@ -277,15 +325,19 @@ export class WhatsAppAudioCapturer {
       };
 
       window.addEventListener('wgt-response-audio', handler as EventListener);
+      window.addEventListener('wgt-audio-response', handler as EventListener);
       window.dispatchEvent(
         new CustomEvent('wgt-request-audio', {
-          detail: { requestId, url, minTimestamp },
+          detail: { requestId, url, minTimestamp, messageId, filehash },
         })
       );
     });
   }
 
   private async fetchAsDataUrl(url: string): Promise<string> {
+    if (!this.isSafeLocalBlobUrl(url)) {
+      throw new Error('Bloqueado download de URL externa criptografada ou não-blob.');
+    }
     const response = await fetch(url, { credentials: 'include', cache: 'no-store' });
     if (!response.ok) {
       throw new Error(`Não foi possível baixar o áudio (${response.status}).`);

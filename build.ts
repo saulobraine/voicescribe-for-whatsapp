@@ -13,6 +13,9 @@ const entryPoints = [
 ];
 
 function copyStaticFiles(): void {
+  if (!isWatchMode && fs.existsSync('build')) {
+    fs.rmSync('build', { recursive: true, force: true });
+  }
   if (!fs.existsSync('build')) {
     fs.mkdirSync('build', { recursive: true });
   }

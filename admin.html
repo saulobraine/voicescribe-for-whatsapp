@@ -557,6 +557,43 @@
       gap: 6px;
     }
 
+    .auto-transcribe-card {
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      transition: all 0.2s ease;
+    }
+
+    .auto-transcribe-card:hover {
+      border-color: rgba(6, 182, 212, 0.3);
+    }
+
+    .auto-transcribe-info {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .auto-transcribe-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .auto-transcribe-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
     /* Toast Notification Banner */
     .status-banner {
       margin-top: 18px;
@@ -668,6 +705,15 @@
         <span class="stat-pill-label">Transcrições</span>
         <span id="stat-usages" class="stat-pill-value">0</span>
       </div>
+    </div>
+
+    <!-- Auto-Transcribe Settings Card -->
+    <div class="auto-transcribe-card">
+      <div class="auto-transcribe-info">
+        <span class="auto-transcribe-title">⚡ Transcrição Automática</span>
+        <span class="auto-transcribe-desc">Transcrever áudios automaticamente ao abrir a conversa</span>
+      </div>
+      <button type="button" id="auto-transcribe-toggle" class="toggle inactive" role="switch" aria-checked="false" title="Ativar ou desativar transcrição automática"></button>
     </div>
 
     <!-- Toolbar -->

@@ -10,6 +10,7 @@ export class AdminController {
 
   public async initialize(): Promise<void> {
     this.bindEvents();
+    await this.initAutoTranscribeToggle();
     await this.refreshTable();
     this.startCooldownTimer();
     this.listenStorageChanges();
@@ -195,10 +196,41 @@ export class AdminController {
     }
   }
 
+  private async initAutoTranscribeToggle(): Promise<void> {
+    const toggleBtn = document.getElementById('auto-transcribe-toggle');
+    toggleBtn?.addEventListener('click', () => void this.handleAutoTranscribeToggle());
+    const isAutoEnabled = await this.storage.isAutoTranscribeEnabled();
+    this.updateAutoTranscribeToggleUi(isAutoEnabled);
+  }
+
+  private async handleAutoTranscribeToggle(): Promise<void> {
+    const toggleBtn = document.getElementById('auto-transcribe-toggle');
+    const currentState = toggleBtn?.classList.contains('active') ?? false;
+    const newState = !currentState;
+    this.updateAutoTranscribeToggleUi(newState);
+    await this.storage.setAutoTranscribeEnabled(newState);
+    const feedback = newState
+      ? 'Transcrição automática ativada com sucesso!'
+      : 'Transcrição automática desativada.';
+    this.showBanner(feedback, false);
+  }
+
+  private updateAutoTranscribeToggleUi(enabled: boolean): void {
+    const toggleBtn = document.getElementById('auto-transcribe-toggle');
+    if (!toggleBtn) {
+      return;
+    }
+    toggleBtn.className = `toggle ${enabled ? 'active' : 'inactive'}`;
+    toggleBtn.setAttribute('aria-checked', String(enabled));
+  }
+
   private listenStorageChanges(): void {
     chrome.storage?.onChanged?.addListener((changes, area) => {
       if (area === 'local' && changes.geminiKeys) {
         this.renderKeys(changes.geminiKeys.newValue || []);
+      }
+      if (area === 'local' && changes.auto_transcribe_enabled) {
+        this.updateAutoTranscribeToggleUi(Boolean(changes.auto_transcribe_enabled.newValue));
       }
     });
   }

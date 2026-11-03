@@ -1,30 +1,97 @@
 import { TranscriptionUiFactory } from './TranscriptionUiFactory.js';
 import { WhatsAppAudioCapturer } from './WhatsAppAudioCapturer.js';
 import { ChromeStorageGateway } from '../infrastructure/ChromeStorageGateway.js';
+import { AutoTranscribeQueue, AutoTranscribeTask } from './AutoTranscribeQueue.js';
+import { MessageAgeValidator } from './MessageAgeValidator.js';
+
+interface PendingObservedMessage {
+  targetElement: HTMLElement;
+  button: HTMLButtonElement;
+  container?: HTMLElement;
+}
 
 export class WhatsAppMessageScanner {
   private readonly uiFactory: TranscriptionUiFactory;
   private readonly audioCapturer: WhatsAppAudioCapturer;
   private readonly storage: ChromeStorageGateway;
+  private readonly autoTranscribeQueue: AutoTranscribeQueue;
+  private readonly ageValidator: MessageAgeValidator;
+  private readonly visibilityObserver: IntersectionObserver | null;
+  private readonly pendingObservedMessages = new Map<HTMLElement, PendingObservedMessage>();
 
   constructor(
     uiFactory: TranscriptionUiFactory = new TranscriptionUiFactory(),
     audioCapturer: WhatsAppAudioCapturer = new WhatsAppAudioCapturer(),
-    storage: ChromeStorageGateway = new ChromeStorageGateway()
+    storage: ChromeStorageGateway = new ChromeStorageGateway(),
+    autoTranscribeQueue?: AutoTranscribeQueue,
+    ageValidator: MessageAgeValidator = new MessageAgeValidator(),
+    visibilityObserver?: IntersectionObserver | null
   ) {
     this.uiFactory = uiFactory;
     this.audioCapturer = audioCapturer;
     this.storage = storage;
+    this.ageValidator = ageValidator;
+    this.autoTranscribeQueue =
+      autoTranscribeQueue ||
+      new AutoTranscribeQueue(this.storage, (task) => this.executeAutoTranscription(task));
+    this.visibilityObserver =
+      visibilityObserver !== undefined ? visibilityObserver : this.createVisibilityObserver();
+  }
+
+  private createVisibilityObserver(): IntersectionObserver | null {
+    if (typeof IntersectionObserver === 'undefined') {
+      return null;
+    }
+    return new IntersectionObserver((entries) => {
+      this.handleVisibilityEntries(entries);
+    }, {
+      root: null,
+      threshold: 0.1,
+    });
+  }
+
+  private handleVisibilityEntries(entries: IntersectionObserverEntry[]): void {
+    entries.forEach((entry) => {
+      this.handleVisibilityEntry(entry);
+    });
+  }
+
+  private handleVisibilityEntry(entry: IntersectionObserverEntry): void {
+    if (!entry.isIntersecting) {
+      return;
+    }
+    const messageElement = entry.target as HTMLElement;
+    this.visibilityObserver?.unobserve(messageElement);
+    const pending = this.pendingObservedMessages.get(messageElement);
+    this.pendingObservedMessages.delete(messageElement);
+    if (!pending) {
+      return;
+    }
+    this.enqueueIfAutoTranscribeEligible(
+      messageElement,
+      pending.targetElement,
+      pending.button,
+      pending.container
+    );
   }
 
   public start(): void {
     this.uiFactory.injectStyles();
     this.injectNetworkInterceptor();
+    void this.initAutoTranscribe();
     this.scan();
     this.observeMutations();
     this.observeScroll();
     this.startHeartbeat();
     this.listenStorageChanges();
+  }
+
+  private async initAutoTranscribe(): Promise<void> {
+    const isAuto = await this.storage.isAutoTranscribeEnabled();
+    this.autoTranscribeQueue.setEnabled(isAuto);
+    if (isAuto) {
+      this.scan();
+    }
   }
 
   public scan(): void {
@@ -42,10 +109,16 @@ export class WhatsAppMessageScanner {
     const processedMessages = new Set<HTMLElement>();
     for (const candidate of candidates) {
       const message = this.findMessageContainer(candidate);
-      if (!message || processedMessages.has(message) || message.querySelector('.wgt-transcribe-button')) {
+      if (!message || processedMessages.has(message)) {
         continue;
       }
       processedMessages.add(message);
+
+      const existingButton = message.querySelector<HTMLButtonElement>('.wgt-transcribe-button');
+      if (existingButton) {
+        this.queueOrObserveMessage(message, candidate, existingButton);
+        continue;
+      }
       this.attachTranscribeButton(message, candidate);
     }
   }
@@ -63,9 +136,79 @@ export class WhatsAppMessageScanner {
 
   private attachTranscribeButton(messageElement: HTMLElement, targetElement: HTMLElement): void {
     const container = this.uiFactory.getOrCreateContainer(messageElement, targetElement);
-    const button = this.uiFactory.createTranscribeButton((btn) => this.onTranscribeClick(messageElement, targetElement, btn, container));
+    const button = this.uiFactory.createTranscribeButton((btn) => {
+      void this.onTranscribeClick(messageElement, targetElement, btn, container);
+    });
     container.appendChild(button);
     void this.checkCachedTranscription(messageElement, button, container);
+    this.queueOrObserveMessage(messageElement, targetElement, button, container);
+  }
+
+  private queueOrObserveMessage(
+    messageElement: HTMLElement,
+    targetElement: HTMLElement,
+    button: HTMLButtonElement,
+    existingContainer?: HTMLElement
+  ): void {
+    if (!this.autoTranscribeQueue.isAutoEnabled()) {
+      return;
+    }
+    if (messageElement.dataset.wgtAutoQueued === 'true') {
+      return;
+    }
+    if (!this.ageValidator.isWithinLast24Hours(messageElement)) {
+      return;
+    }
+    if (!this.visibilityObserver) {
+      this.enqueueIfAutoTranscribeEligible(messageElement, targetElement, button, existingContainer);
+      return;
+    }
+    this.pendingObservedMessages.set(messageElement, {
+      targetElement,
+      button,
+      container: existingContainer,
+    });
+    this.visibilityObserver.observe(messageElement);
+  }
+
+  private enqueueIfAutoTranscribeEligible(
+    messageElement: HTMLElement,
+    targetElement: HTMLElement,
+    button: HTMLButtonElement,
+    existingContainer?: HTMLElement
+  ): void {
+    if (!this.autoTranscribeQueue.isAutoEnabled()) {
+      return;
+    }
+    if (messageElement.dataset.wgtAutoQueued === 'true') {
+      return;
+    }
+    messageElement.dataset.wgtAutoQueued = 'true';
+    const container = existingContainer || this.uiFactory.getOrCreateContainer(messageElement, targetElement);
+    const audioId = this.extractMessageIdentifier(messageElement);
+    const task: AutoTranscribeTask = {
+      messageElement,
+      targetElement,
+      button,
+      container,
+      audioId,
+    };
+    this.autoTranscribeQueue.enqueue(task);
+  }
+
+  private async executeAutoTranscription(task: AutoTranscribeTask): Promise<void> {
+    const cached = await this.storage.getCachedTranscription(task.audioId);
+    if (cached) {
+      this.toggleCachedBubble(task.messageElement, task.container, cached, task.button);
+      return;
+    }
+    await this.transcribeAudioMessage(
+      task.messageElement,
+      task.targetElement,
+      task.button,
+      task.container,
+      task.audioId
+    );
   }
 
   private async onTranscribeClick(
@@ -74,6 +217,7 @@ export class WhatsAppMessageScanner {
     button: HTMLButtonElement,
     container: HTMLElement
   ): Promise<void> {
+    messageElement.dataset.wgtAutoQueued = 'true';
     const audioId = this.extractMessageIdentifier(messageElement);
     const cached = await this.storage.getCachedTranscription(audioId);
 
@@ -82,6 +226,21 @@ export class WhatsAppMessageScanner {
       return;
     }
 
+    try {
+      await this.transcribeAudioMessage(messageElement, targetElement, button, container, audioId);
+    } catch {
+      // Erro tratado visualmente pelo handleTranscriptionError
+    }
+  }
+
+  private async transcribeAudioMessage(
+    messageElement: HTMLElement,
+    targetElement: HTMLElement,
+    button: HTMLButtonElement,
+    container: HTMLElement,
+    audioId: string
+  ): Promise<void> {
+    messageElement.dataset.wgtAutoQueued = 'true';
     button.disabled = true;
     button.textContent = '⏳ Transcrevendo...';
     this.uiFactory.clearBubbles(container);
@@ -100,6 +259,7 @@ export class WhatsAppMessageScanner {
       });
     } catch (error: unknown) {
       this.handleTranscriptionError(error, button, container, messageElement);
+      throw error;
     } finally {
       this.resetButtonState(button, audioId);
     }
@@ -134,6 +294,7 @@ export class WhatsAppMessageScanner {
     if (!cached) {
       return;
     }
+    messageElement.dataset.wgtAutoQueued = 'true';
     if (button.isConnected) {
       button.textContent = '✓ Cache';
       button.title = 'Transcrição em cache (clique para alternar)';
@@ -273,6 +434,13 @@ export class WhatsAppMessageScanner {
       if (area === 'local' && changes.geminiKeys) {
         void this.checkAndRestoreAvailableKeys();
       }
+      if (area === 'local' && changes.auto_transcribe_enabled) {
+        const isEnabled = Boolean(changes.auto_transcribe_enabled.newValue);
+        this.autoTranscribeQueue.setEnabled(isEnabled);
+        if (isEnabled) {
+          this.scan();
+        }
+      }
     });
   }
 
@@ -282,6 +450,7 @@ export class WhatsAppMessageScanner {
     const hasAvailableKey = records.some((r) => r.active && (!r.rateLimitReset || r.rateLimitReset <= now));
     if (hasAvailableKey) {
       this.restoreAllCooldownButtons();
+      this.autoTranscribeQueue.resume();
     }
   }
 
