@@ -13,7 +13,7 @@ function createMockTask(options: {
   const isConnected = options.isConnected ?? true;
   const messageElement = {
     isConnected,
-    dataset: options.isTerminalError ? { wgtTerminalError: 'true' } : {},
+    dataset: options.isTerminalError ? { vsTerminalError: 'true' } : {},
   } as unknown as HTMLElement;
 
   const targetElement = {
@@ -23,13 +23,13 @@ function createMockTask(options: {
   const button = {
     isConnected,
     textContent: options.buttonText || '🎙 Transcrever',
-    dataset: options.isTerminalError ? { wgtTerminalError: 'true' } : {},
+    dataset: options.isTerminalError ? { vsTerminalError: 'true' } : {},
   } as unknown as HTMLButtonElement;
 
   const container = {
     isConnected,
     querySelector(selector: string) {
-      if (options.hasBubble && selector.includes('.wgt-bubble')) {
+      if (options.hasBubble && (selector.includes('.vs-bubble') || selector.includes('.wgt-bubble'))) {
         return {};
       }
       return null;

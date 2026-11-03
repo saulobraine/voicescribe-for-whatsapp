@@ -168,14 +168,14 @@ export class AutoTranscribeQueue {
     if (task.button.textContent?.includes('Cache')) {
       return true;
     }
-    return Boolean(task.container.querySelector('.wgt-bubble:not(.wgt-error)'));
+    return Boolean(task.container.querySelector('.vs-bubble:not(.vs-error)'));
   }
 
   private hasTerminalError(task: AutoTranscribeTask): boolean {
-    if (task.messageElement.dataset.wgtTerminalError === 'true') {
+    if (task.messageElement.dataset.vsTerminalError === 'true' || task.messageElement.dataset.wgtTerminalError === 'true') {
       return true;
     }
-    if (task.button.dataset.wgtTerminalError === 'true') {
+    if (task.button.dataset.vsTerminalError === 'true' || task.button.dataset.wgtTerminalError === 'true') {
       return true;
     }
     return task.button.textContent?.includes('✕ Erro') ?? false;
@@ -237,8 +237,8 @@ export class AutoTranscribeQueue {
   }
 
   private markTerminalError(task: AutoTranscribeTask): void {
-    task.messageElement.dataset.wgtTerminalError = 'true';
-    task.button.dataset.wgtTerminalError = 'true';
+    task.messageElement.dataset.vsTerminalError = 'true';
+    task.button.dataset.vsTerminalError = 'true';
   }
 
   private scheduleResume(delayMs: number): void {

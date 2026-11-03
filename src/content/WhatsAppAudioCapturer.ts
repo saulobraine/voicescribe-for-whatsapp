@@ -110,9 +110,11 @@ export class WhatsAppAudioCapturer {
       }
     };
 
+    window.addEventListener('vs-audio', audioListener as EventListener);
     window.addEventListener('wgt-audio', audioListener as EventListener);
 
     try {
+      window.dispatchEvent(new CustomEvent('vs-silent-capture-start'));
       window.dispatchEvent(new CustomEvent('wgt-silent-capture-start'));
       this.muteInitialMedia(mediaElement);
       this.triggerPlay(messageElement);
@@ -129,6 +131,7 @@ export class WhatsAppAudioCapturer {
 
       throw new Error('Não consegui obter o arquivo de áudio. Reproduza a mensagem e tente novamente.');
     } finally {
+      window.removeEventListener('vs-audio', audioListener as EventListener);
       window.removeEventListener('wgt-audio', audioListener as EventListener);
       await this.cleanupSilentPlayback(messageElement, mediaElement);
     }
@@ -233,6 +236,7 @@ export class WhatsAppAudioCapturer {
       } catch {}
     }
 
+    window.dispatchEvent(new CustomEvent('vs-silent-capture-stop'));
     window.dispatchEvent(new CustomEvent('wgt-silent-capture-stop'));
     this.restoreDocumentMediaVolume();
   }
@@ -263,7 +267,7 @@ export class WhatsAppAudioCapturer {
     );
     if (playerWrapper) {
       const wrapperBtn = playerWrapper.querySelector<HTMLElement>(
-        'button:not(.wgt-transcribe-button):not(.wgt-copy):not(.wgt-close)'
+        'button:not(.vs-transcribe-button):not(.vs-copy):not(.vs-close):not(.wgt-transcribe-button):not(.wgt-copy):not(.wgt-close)'
       );
       if (wrapperBtn) {
         return wrapperBtn;
@@ -271,7 +275,7 @@ export class WhatsAppAudioCapturer {
     }
 
     const allButtons = messageElement.querySelectorAll<HTMLElement>(
-      'button:not(.wgt-transcribe-button):not(.wgt-copy):not(.wgt-close)'
+      'button:not(.vs-transcribe-button):not(.vs-copy):not(.vs-close):not(.wgt-transcribe-button):not(.wgt-copy):not(.wgt-close)'
     );
     for (const button of allButtons) {
       if (button.querySelector('[data-icon*="play"], svg')) {
@@ -302,9 +306,12 @@ export class WhatsAppAudioCapturer {
     filehash?: string
   ): Promise<string> {
     return new Promise((resolve, reject) => {
-      const requestId = `wgt_${Math.random().toString(36).slice(2, 9)}`;
+      const requestId = `vs_${Math.random().toString(36).slice(2, 9)}`;
       const timer = setTimeout(() => {
+        window.removeEventListener('vs-response-audio', handler as EventListener);
+        window.removeEventListener('vs-audio-response', handler as EventListener);
         window.removeEventListener('wgt-response-audio', handler as EventListener);
+        window.removeEventListener('wgt-audio-response', handler as EventListener);
         reject(new Error('Tempo limite excedido ao capturar o áudio da página.'));
       }, this.timeoutMilliseconds);
 
@@ -313,6 +320,8 @@ export class WhatsAppAudioCapturer {
         if (detail.requestId !== requestId) {
           return;
         }
+        window.removeEventListener('vs-response-audio', handler as EventListener);
+        window.removeEventListener('vs-audio-response', handler as EventListener);
         window.removeEventListener('wgt-response-audio', handler as EventListener);
         window.removeEventListener('wgt-audio-response', handler as EventListener);
         clearTimeout(timer);
@@ -328,8 +337,15 @@ export class WhatsAppAudioCapturer {
         reject(new Error('Áudio vazio retornado pela página.'));
       };
 
+      window.addEventListener('vs-response-audio', handler as EventListener);
+      window.addEventListener('vs-audio-response', handler as EventListener);
       window.addEventListener('wgt-response-audio', handler as EventListener);
       window.addEventListener('wgt-audio-response', handler as EventListener);
+      window.dispatchEvent(
+        new CustomEvent('vs-request-audio', {
+          detail: { requestId, url, minTimestamp, messageId, filehash },
+        })
+      );
       window.dispatchEvent(
         new CustomEvent('wgt-request-audio', {
           detail: { requestId, url, minTimestamp, messageId, filehash },

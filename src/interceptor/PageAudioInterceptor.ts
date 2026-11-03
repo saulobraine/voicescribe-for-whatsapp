@@ -4,23 +4,28 @@
  */
 export class PageAudioInterceptor {
   private static readonly MAX_STORED_BLOBS = 50;
-  private readonly blobStore: Map<string, Blob & { __wgtTimestamp?: number }>;
+  private readonly blobStore: Map<string, Blob & { __vsTimestamp?: number; __wgtTimestamp?: number }>;
   private isSilentCaptureActive = false;
   private silentCaptureTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     const globalWindow = window as unknown as {
-      __wgtBlobStore?: Map<string, Blob & { __wgtTimestamp?: number }>;
+      __vsBlobStore?: Map<string, Blob & { __vsTimestamp?: number; __wgtTimestamp?: number }>;
+      __wgtBlobStore?: Map<string, Blob & { __vsTimestamp?: number; __wgtTimestamp?: number }>;
     };
-    globalWindow.__wgtBlobStore = globalWindow.__wgtBlobStore || new Map();
-    this.blobStore = globalWindow.__wgtBlobStore;
+    globalWindow.__vsBlobStore = globalWindow.__vsBlobStore || globalWindow.__wgtBlobStore || new Map();
+    this.blobStore = globalWindow.__vsBlobStore;
   }
 
   public start(): void {
-    const globalWindow = window as unknown as { __wgtInterceptorInstalled?: boolean };
-    if (globalWindow.__wgtInterceptorInstalled) {
+    const globalWindow = window as unknown as {
+      __vsInterceptorInstalled?: boolean;
+      __wgtInterceptorInstalled?: boolean;
+    };
+    if (globalWindow.__vsInterceptorInstalled || globalWindow.__wgtInterceptorInstalled) {
       return;
     }
+    globalWindow.__vsInterceptorInstalled = true;
     globalWindow.__wgtInterceptorInstalled = true;
 
     this.listenForSilentCapture();
@@ -34,10 +39,16 @@ export class PageAudioInterceptor {
   }
 
   private listenForSilentCapture(): void {
+    window.addEventListener('vs-silent-capture-start', () => {
+      this.handleSilentCaptureStart();
+    });
     window.addEventListener('wgt-silent-capture-start', () => {
       this.handleSilentCaptureStart();
     });
 
+    window.addEventListener('vs-silent-capture-stop', () => {
+      this.handleSilentCaptureStop();
+    });
     window.addEventListener('wgt-silent-capture-stop', () => {
       this.handleSilentCaptureStop();
     });
@@ -112,6 +123,11 @@ export class PageAudioInterceptor {
       return;
     }
     window.dispatchEvent(
+      new CustomEvent('vs-audio', {
+        detail: { url: audioUrl, timestamp: Date.now() },
+      })
+    );
+    window.dispatchEvent(
       new CustomEvent('wgt-audio', {
         detail: { url: audioUrl, timestamp: Date.now() },
       })
@@ -184,20 +200,21 @@ export class PageAudioInterceptor {
     const self = this;
 
     XMLHttpRequest.prototype.open = function (
-      this: XMLHttpRequest & { _wgtUrl?: string },
+      this: XMLHttpRequest & { _vsUrl?: string; _wgtUrl?: string },
       method: string,
       url: string | URL,
       ...rest: any[]
     ): void {
+      this._vsUrl = String(url);
       this._wgtUrl = String(url);
       return (originalOpen as any).apply(this, [method, url, ...rest]);
     };
 
     XMLHttpRequest.prototype.send = function (
-      this: XMLHttpRequest & { _wgtUrl?: string },
+      this: XMLHttpRequest & { _vsUrl?: string; _wgtUrl?: string },
       body?: Document | XMLHttpRequestBodyInit | null
     ): void {
-      const url = this._wgtUrl || '';
+      const url = this._vsUrl || this._wgtUrl || '';
       this.addEventListener('load', () => {
         const contentType = this.getResponseHeader('Content-Type') || '';
         self.emitAudioUrlIfInteresting(url, contentType);
@@ -225,17 +242,28 @@ export class PageAudioInterceptor {
     }
 
     window.dispatchEvent(
+      new CustomEvent('vs-audio', {
+        detail: { url, type, timestamp: Date.now() },
+      })
+    );
+    window.dispatchEvent(
       new CustomEvent('wgt-audio', {
         detail: { url, type, timestamp: Date.now() },
       })
     );
   }
 
-  private registerAudioBlob(url: string, blob: Blob & { __wgtTimestamp?: number }): void {
-    blob.__wgtTimestamp = Date.now();
+  private registerAudioBlob(url: string, blob: Blob & { __vsTimestamp?: number; __wgtTimestamp?: number }): void {
+    blob.__vsTimestamp = Date.now();
+    blob.__wgtTimestamp = blob.__vsTimestamp;
     this.blobStore.set(url, blob);
     this.pruneOldBlobs();
 
+    window.dispatchEvent(
+      new CustomEvent('vs-audio', {
+        detail: { url, timestamp: blob.__vsTimestamp, blob },
+      })
+    );
     window.dispatchEvent(
       new CustomEvent('wgt-audio', {
         detail: { url, timestamp: blob.__wgtTimestamp, blob },
@@ -254,7 +282,7 @@ export class PageAudioInterceptor {
   }
 
   private listenForAudioRequests(): void {
-    window.addEventListener('wgt-request-audio', async (event: Event) => {
+    const onAudioRequest = async (event: Event) => {
       const customEvent = event as CustomEvent;
       const detail = customEvent.detail || {};
       const { requestId, url, minTimestamp, messageId, filehash } = detail;
@@ -274,7 +302,10 @@ export class PageAudioInterceptor {
         const errorMessage = error instanceof Error ? error.message : String(error);
         this.respondAudioError(requestId, errorMessage);
       }
-    });
+    };
+
+    window.addEventListener('vs-request-audio', onAudioRequest);
+    window.addEventListener('wgt-request-audio', onAudioRequest);
   }
 
   private async resolveBlob(
@@ -461,7 +492,7 @@ export class PageAudioInterceptor {
     let bestTime = 0;
 
     for (const [, blobItem] of this.blobStore.entries()) {
-      const timestamp = blobItem.__wgtTimestamp || 0;
+      const timestamp = blobItem.__vsTimestamp || blobItem.__wgtTimestamp || 0;
       if (timestamp >= minTimestamp && timestamp >= bestTime) {
         bestBlob = blobItem;
         bestTime = timestamp;
@@ -496,6 +527,16 @@ export class PageAudioInterceptor {
 
   private respondAudioError(requestId: string, error: string): void {
     window.dispatchEvent(
+      new CustomEvent('vs-response-audio', {
+        detail: { requestId, error },
+      })
+    );
+    window.dispatchEvent(
+      new CustomEvent('vs-audio-response', {
+        detail: { requestId, error },
+      })
+    );
+    window.dispatchEvent(
       new CustomEvent('wgt-response-audio', {
         detail: { requestId, error },
       })
@@ -509,6 +550,16 @@ export class PageAudioInterceptor {
 
   private async respondAudioBlobAsDataUrl(requestId: string, blob: Blob): Promise<void> {
     const dataUrl = await this.blobToDataUrl(blob);
+    window.dispatchEvent(
+      new CustomEvent('vs-response-audio', {
+        detail: { requestId, dataUrl },
+      })
+    );
+    window.dispatchEvent(
+      new CustomEvent('vs-audio-response', {
+        detail: { requestId, dataUrl },
+      })
+    );
     window.dispatchEvent(
       new CustomEvent('wgt-response-audio', {
         detail: { requestId, dataUrl },

@@ -14,7 +14,7 @@ export class ChromeStorageGateway {
   private static readonly STORAGE_SELECTED_MODEL = 'selectedModel';
   private static readonly STORAGE_AUTO_TRANSCRIBE = 'auto_transcribe_enabled';
   private static readonly DEFAULT_MODEL = 'gemini-3.8-flash';
-  private static readonly MSG_CACHE_PREFIX = 'wgt_msg_cache_';
+  private static readonly MSG_CACHE_PREFIX = 'vs_msg_cache_';
 
   public async getStoredKeys(): Promise<StoredApiKeyRecord[]> {
     if (!this.isStorageAvailable()) {
@@ -41,7 +41,7 @@ export class ChromeStorageGateway {
       return [];
     }
     const migrated: StoredApiKeyRecord = {
-      id: `wgt_${Date.now().toString(36)}`,
+      id: `vs_${Date.now().toString(36)}`,
       key: legacyKey,
       active: true,
       status: 'available',
@@ -136,8 +136,11 @@ export class ChromeStorageGateway {
     const all = await this.executeSafeStorageGet(null);
     const keysToRemove = Object.keys(all).filter((key) =>
       key.startsWith(ChromeStorageGateway.MSG_CACHE_PREFIX) ||
+      key.startsWith('vs_cache_') ||
+      key.startsWith('vs_quota_cooldown') ||
       key.startsWith('wgt_cache_') ||
-      key.startsWith('wgt_quota_cooldown')
+      key.startsWith('wgt_quota_cooldown') ||
+      key.startsWith('wgt_msg_cache_')
     );
     if (keysToRemove.length > 0) {
       await this.executeSafeStorageRemove(keysToRemove);
