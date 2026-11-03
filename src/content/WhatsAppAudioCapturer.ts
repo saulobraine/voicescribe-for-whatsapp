@@ -10,6 +10,10 @@ export class WhatsAppAudioCapturer {
   }
 
   public async captureAudioDataUrl(messageElement: HTMLElement, targetElement?: HTMLElement): Promise<string> {
+    if (typeof messageElement.querySelector === 'function' && messageElement.querySelector('video')) {
+      throw new Error('Mensagens de vídeo não são elegíveis para transcrição.');
+    }
+
     const memoryDataUrl = await this.tryRequestFromPageCache(messageElement);
     if (memoryDataUrl) {
       return memoryDataUrl;
@@ -70,15 +74,15 @@ export class WhatsAppAudioCapturer {
   }
 
   public findMediaElement(messageElement: HTMLElement, targetElement?: HTMLElement): HTMLMediaElement | null {
-    if (targetElement && (targetElement instanceof HTMLAudioElement || targetElement instanceof HTMLVideoElement)) {
+    if (targetElement instanceof HTMLAudioElement) {
       return targetElement;
     }
-    const mediaElements = Array.from(messageElement.querySelectorAll<HTMLMediaElement>('audio, video'));
-    const mediaWithSource = mediaElements.find((element) => element.currentSrc || element.src);
-    if (mediaWithSource) {
-      return mediaWithSource;
+    const audioElements = Array.from(messageElement.querySelectorAll<HTMLAudioElement>('audio'));
+    const audioWithSource = audioElements.find((element) => element.currentSrc || element.src);
+    if (audioWithSource) {
+      return audioWithSource;
     }
-    return mediaElements[0] || null;
+    return audioElements[0] || null;
   }
 
   private async tryFetchOrRequestFromPage(url: string): Promise<string | null> {
@@ -234,7 +238,7 @@ export class WhatsAppAudioCapturer {
   }
 
   private restoreDocumentMediaVolume(): void {
-    const elements = document.querySelectorAll<HTMLMediaElement>('audio, video');
+    const elements = document.querySelectorAll<HTMLAudioElement>('audio');
     elements.forEach((element) => {
       try {
         element.muted = false;

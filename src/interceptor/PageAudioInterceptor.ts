@@ -52,7 +52,7 @@ export class PageAudioInterceptor {
       this.isSilentCaptureActive = false;
     }, 30000);
 
-    const mediaElements = document.querySelectorAll<HTMLMediaElement>('audio, video');
+    const mediaElements = document.querySelectorAll<HTMLAudioElement>('audio');
     mediaElements.forEach((element) => this.muteElement(element));
   }
 
@@ -62,7 +62,7 @@ export class PageAudioInterceptor {
       clearTimeout(this.silentCaptureTimer);
     }
 
-    const mediaElements = document.querySelectorAll<HTMLMediaElement>('audio, video');
+    const mediaElements = document.querySelectorAll<HTMLAudioElement>('audio');
     mediaElements.forEach((element) => this.restoreElement(element));
   }
 
@@ -134,7 +134,7 @@ export class PageAudioInterceptor {
       if (!this.isSilentCaptureActive) {
         return;
       }
-      const mediaElements = document.querySelectorAll<HTMLMediaElement>('audio, video');
+      const mediaElements = document.querySelectorAll<HTMLAudioElement>('audio');
       mediaElements.forEach((element) => this.muteElement(element));
     });
     mediaObserver.observe(document.documentElement, { childList: true, subtree: true });
@@ -146,7 +146,7 @@ export class PageAudioInterceptor {
 
     URL.createObjectURL = function (object: Blob | MediaSource): string {
       const url = originalCreate(object);
-      if (object instanceof Blob && self.isAudioOrVideoBlob(object)) {
+      if (object instanceof Blob && self.isAudioBlob(object)) {
         self.registerAudioBlob(url, object);
       }
       self.emitAudioUrlIfInteresting(url, object instanceof Blob ? object.type : '');
@@ -216,9 +216,9 @@ export class PageAudioInterceptor {
     const lower = url.toLowerCase();
     const isInteresting =
       lower.includes('mmg.whatsapp.net') ||
-      /\.(ogg|opus|mp4)(?:[?#]|$)/i.test(lower) ||
+      /\.(ogg|opus)(?:[?#]|$)/i.test(lower) ||
       lower.includes('/media/') ||
-      this.isAudioOrVideoType(type);
+      this.isAudioType(type);
 
     if (!isInteresting) {
       return;
@@ -472,7 +472,7 @@ export class PageAudioInterceptor {
   }
 
   private async findBlobFromDomElements(): Promise<Blob | null> {
-    const audioElements = Array.from(document.querySelectorAll<HTMLMediaElement>('audio, video')).filter(
+    const audioElements = Array.from(document.querySelectorAll<HTMLAudioElement>('audio')).filter(
       (element) => element.currentSrc || element.src
     );
 
@@ -530,18 +530,17 @@ export class PageAudioInterceptor {
     });
   }
 
-  private isAudioOrVideoBlob(blob: Blob): boolean {
-    return this.isAudioOrVideoType(blob.type);
+  private isAudioBlob(blob: Blob): boolean {
+    return this.isAudioType(blob.type);
   }
 
-  private isAudioOrVideoType(type?: string): boolean {
+  private isAudioType(type?: string): boolean {
     if (!type || typeof type !== 'string') {
       return true;
     }
     const lower = type.toLowerCase();
     return (
       lower.startsWith('audio/') ||
-      lower.startsWith('video/') ||
       lower.includes('ogg') ||
       lower.includes('opus') ||
       lower.includes('octet-stream')

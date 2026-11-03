@@ -87,10 +87,17 @@ export class WhatsAppMessageScanner {
   }
 
   private async initAutoTranscribe(): Promise<void> {
-    const isAuto = await this.storage.isAutoTranscribeEnabled();
-    this.autoTranscribeQueue.setEnabled(isAuto);
-    if (isAuto) {
-      this.scan();
+    if (!this.isContextValid()) {
+      return;
+    }
+    try {
+      const isAuto = await this.storage.isAutoTranscribeEnabled();
+      this.autoTranscribeQueue.setEnabled(isAuto);
+      if (isAuto) {
+        this.scan();
+      }
+    } catch {
+      // Silencia erros se o contexto da extensão foi invalidado
     }
   }
 
@@ -98,7 +105,7 @@ export class WhatsAppMessageScanner {
     this.updateExistingContainers();
 
     const candidates = document.querySelectorAll<HTMLElement>(
-      'audio, video, ' +
+      'audio, ' +
       '[data-testid*="audio"], [data-testid*="ptt"], [data-testid*="voice"], ' +
       '[data-icon*="audio-play"], [data-icon*="ptt"], span.ptt-status, ' +
       'button[aria-label*="Reproduzir" i], button[aria-label*="Play" i], ' +
@@ -109,7 +116,7 @@ export class WhatsAppMessageScanner {
     const processedMessages = new Set<HTMLElement>();
     for (const candidate of candidates) {
       const message = this.findMessageContainer(candidate);
-      if (!message || processedMessages.has(message)) {
+      if (!message || processedMessages.has(message) || this.isVideoMessage(message, candidate)) {
         continue;
       }
       processedMessages.add(message);
@@ -127,11 +134,28 @@ export class WhatsAppMessageScanner {
     const containers = document.querySelectorAll<HTMLElement>('.wgt-container');
     containers.forEach((container) => {
       const message = this.findMessageContainer(container);
-      if (!message) {
+      if (!message || this.isVideoMessage(message)) {
+        if (message && this.isVideoMessage(message)) {
+          container.remove();
+        }
         return;
       }
       this.uiFactory.getOrCreateContainer(message);
     });
+  }
+
+  private isVideoMessage(message: HTMLElement, candidate?: HTMLElement): boolean {
+    if (candidate?.tagName.toLowerCase() === 'video') {
+      return true;
+    }
+    if (message.querySelector('video')) {
+      return true;
+    }
+    const messageTestId = message.getAttribute('data-testid') || '';
+    if (messageTestId.includes('video')) {
+      return true;
+    }
+    return Boolean(message.querySelector('[data-testid*="video"], [data-icon*="video"]'));
   }
 
   private attachTranscribeButton(messageElement: HTMLElement, targetElement: HTMLElement): void {
@@ -289,20 +313,27 @@ export class WhatsAppMessageScanner {
     button: HTMLButtonElement,
     container: HTMLElement
   ): Promise<void> {
-    const audioId = this.extractMessageIdentifier(messageElement);
-    const cached = await this.storage.getCachedTranscription(audioId);
-    if (!cached) {
+    if (!this.isContextValid()) {
       return;
     }
-    messageElement.dataset.wgtAutoQueued = 'true';
-    if (button.isConnected) {
-      button.textContent = '✓ Cache';
-      button.title = 'Transcrição em cache (clique para alternar)';
-    }
-    if (!container.querySelector('.wgt-bubble') && !messageElement.dataset.wgtClosed) {
-      this.uiFactory.renderBubble(container, cached, false, () => {
-        messageElement.dataset.wgtClosed = 'true';
-      });
+    try {
+      const audioId = this.extractMessageIdentifier(messageElement);
+      const cached = await this.storage.getCachedTranscription(audioId);
+      if (!cached) {
+        return;
+      }
+      messageElement.dataset.wgtAutoQueued = 'true';
+      if (button.isConnected) {
+        button.textContent = '✓ Cache';
+        button.title = 'Transcrição em cache (clique para alternar)';
+      }
+      if (!container.querySelector('.wgt-bubble') && !messageElement.dataset.wgtClosed) {
+        this.uiFactory.renderBubble(container, cached, false, () => {
+          messageElement.dataset.wgtClosed = 'true';
+        });
+      }
+    } catch {
+      // Silencia erros se o contexto da extensão foi invalidado
     }
   }
 
@@ -344,6 +375,10 @@ export class WhatsAppMessageScanner {
     button.textContent = `🕐 Cooldown (${initialSeconds}s)`;
 
     const timer = setInterval(() => {
+      if (!this.isContextValid()) {
+        clearInterval(timer);
+        return;
+      }
       const remainingSeconds = Math.max(0, Math.ceil((targetTimestamp - Date.now()) / 1000));
 
       if (!button.isConnected) {
@@ -401,56 +436,84 @@ export class WhatsAppMessageScanner {
   ): Promise<void> {
     this.clearButtonCooldownTimer(button);
     button.disabled = false;
-    const audioId = this.extractMessageIdentifier(messageElement);
-    const cached = await this.storage.getCachedTranscription(audioId);
-
-    if (button.isConnected) {
-      button.textContent = cached ? '✓ Cache' : '🎙 Transcrever';
+    if (!this.isContextValid()) {
+      return;
     }
+    try {
+      const audioId = this.extractMessageIdentifier(messageElement);
+      const cached = await this.storage.getCachedTranscription(audioId);
 
-    if (container) {
-      const bubble = container.querySelector('.wgt-bubble');
-      if (bubble && bubble.textContent?.includes('Limite da API')) {
-        bubble.remove();
+      if (button.isConnected) {
+        button.textContent = cached ? '✓ Cache' : '🎙 Transcrever';
       }
+
+      if (container) {
+        const bubble = container.querySelector('.wgt-bubble');
+        if (bubble && bubble.textContent?.includes('Limite da API')) {
+          bubble.remove();
+        }
+      }
+    } catch {
+      // Silencia erros se o contexto da extensão foi invalidado
     }
   }
 
   private resetButtonState(button: HTMLButtonElement, audioId: string): void {
     setTimeout(async () => {
-      if (!button.isConnected || button.textContent?.includes('Cooldown')) {
+      if (!this.isContextValid() || !button.isConnected || button.textContent?.includes('Cooldown')) {
         return;
       }
-      button.disabled = false;
-      const cached = await this.storage.getCachedTranscription(audioId);
-      if (button.isConnected) {
-        button.textContent = cached ? '✓ Cache' : '🎙 Transcrever';
+      try {
+        button.disabled = false;
+        const cached = await this.storage.getCachedTranscription(audioId);
+        if (button.isConnected) {
+          button.textContent = cached ? '✓ Cache' : '🎙 Transcrever';
+        }
+      } catch {
+        // Silencia erros se o contexto da extensão foi invalidado
       }
     }, 2500);
   }
 
   private listenStorageChanges(): void {
-    chrome.storage?.onChanged?.addListener((changes, area) => {
-      if (area === 'local' && changes.geminiKeys) {
-        void this.checkAndRestoreAvailableKeys();
-      }
-      if (area === 'local' && changes.auto_transcribe_enabled) {
-        const isEnabled = Boolean(changes.auto_transcribe_enabled.newValue);
-        this.autoTranscribeQueue.setEnabled(isEnabled);
-        if (isEnabled) {
-          this.scan();
+    if (!this.isContextValid()) {
+      return;
+    }
+    try {
+      chrome.storage?.onChanged?.addListener((changes, area) => {
+        if (!this.isContextValid()) {
+          return;
         }
-      }
-    });
+        if (area === 'local' && changes.geminiKeys) {
+          void this.checkAndRestoreAvailableKeys();
+        }
+        if (area === 'local' && changes.auto_transcribe_enabled) {
+          const isEnabled = Boolean(changes.auto_transcribe_enabled.newValue);
+          this.autoTranscribeQueue.setEnabled(isEnabled);
+          if (isEnabled) {
+            this.scan();
+          }
+        }
+      });
+    } catch {
+      // Silencia erros se o contexto da extensão foi invalidado
+    }
   }
 
   private async checkAndRestoreAvailableKeys(): Promise<void> {
-    const records = await this.storage.getStoredKeys();
-    const now = Date.now();
-    const hasAvailableKey = records.some((r) => r.active && (!r.rateLimitReset || r.rateLimitReset <= now));
-    if (hasAvailableKey) {
-      this.restoreAllCooldownButtons();
-      this.autoTranscribeQueue.resume();
+    if (!this.isContextValid()) {
+      return;
+    }
+    try {
+      const records = await this.storage.getStoredKeys();
+      const now = Date.now();
+      const hasAvailableKey = records.some((r) => r.active && (!r.rateLimitReset || r.rateLimitReset <= now));
+      if (hasAvailableKey) {
+        this.restoreAllCooldownButtons();
+        this.autoTranscribeQueue.resume();
+      }
+    } catch {
+      // Silencia erros se o contexto da extensão foi invalidado
     }
   }
 
@@ -472,22 +535,46 @@ export class WhatsAppMessageScanner {
 
   private sendToBackgroundForTranscription(audioDataUrl: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({ action: 'transcribe', dataUrl: audioDataUrl }, (response) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
-        }
-        if (response?.error) {
-          reject(new Error(response.error));
-          return;
-        }
-        if (typeof response?.text === 'string') {
-          resolve(response.text);
-          return;
-        }
-        reject(new Error('Resposta inválida do serviço de transcrição.'));
-      });
+      if (!this.isContextValid()) {
+        reject(new Error('Extension context invalidated.'));
+        return;
+      }
+      this.dispatchTranscriptionMessage(audioDataUrl, resolve, reject);
     });
+  }
+
+  private dispatchTranscriptionMessage(
+    audioDataUrl: string,
+    resolve: (value: string) => void,
+    reject: (reason?: any) => void
+  ): void {
+    try {
+      chrome.runtime.sendMessage({ action: 'transcribe', dataUrl: audioDataUrl }, (response) => {
+        this.handleTranscriptionResponse(response, resolve, reject);
+      });
+    } catch (error) {
+      reject(error);
+    }
+  }
+
+  private handleTranscriptionResponse(
+    response: any,
+    resolve: (value: string) => void,
+    reject: (reason?: any) => void
+  ): void {
+    if (chrome.runtime?.lastError) {
+      reject(new Error(chrome.runtime.lastError.message));
+      return;
+    }
+    if (response?.error) {
+      reject(new Error(response.error));
+      return;
+    }
+    if (typeof response?.text === 'string') {
+      resolve(response.text);
+      return;
+    }
+    reject(new Error('Resposta inválida do serviço de transcrição.'));
   }
 
   private findMessageContainer(element: HTMLElement): HTMLElement | null {
@@ -540,19 +627,35 @@ export class WhatsAppMessageScanner {
   }
 
   private startHeartbeat(): void {
-    setInterval(() => {
+    const timer = setInterval(() => {
+      if (!this.isContextValid()) {
+        clearInterval(timer);
+        return;
+      }
       this.scan();
       void this.checkAndRestoreAvailableKeys();
     }, 2000);
   }
 
   public injectNetworkInterceptor(): void {
-    if (document.getElementById('wgt-interceptor')) {
+    if (!this.isContextValid() || document.getElementById('wgt-interceptor')) {
       return;
     }
-    const script = document.createElement('script');
-    script.id = 'wgt-interceptor';
-    script.src = chrome.runtime.getURL('interceptor.js');
-    (document.head || document.documentElement).appendChild(script);
+    try {
+      const script = document.createElement('script');
+      script.id = 'wgt-interceptor';
+      script.src = chrome.runtime.getURL('interceptor.js');
+      (document.head || document.documentElement).appendChild(script);
+    } catch {
+      // Silencia erros se o contexto da extensão foi invalidado
+    }
+  }
+
+  private isContextValid(): boolean {
+    try {
+      return Boolean(typeof chrome !== 'undefined' && chrome.runtime?.id);
+    } catch {
+      return false;
+    }
   }
 }
